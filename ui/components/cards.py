@@ -5,7 +5,12 @@ import streamlit as st
 from advisor.domain.evidence import RecoveryOption
 
 
-def render_option_cards(options: List[RecoveryOption], container=None) -> None:
+def render_option_cards(
+    options: List[RecoveryOption],
+    container=None,
+    on_finalize=None,
+    key_prefix: str = "opt",
+) -> None:
     """Renders ranked recovery candidate cards with costs, repairs, and cancellation comparison."""
     target = container if container else st
 
@@ -34,6 +39,16 @@ def render_option_cards(options: List[RecoveryOption], container=None) -> None:
 
                 if opt.repair:
                     st.warning(f"🔧 **Actionable Minimal Repair:** `{opt.repair.lever.replace('_', ' ')}` by **{opt.repair.magnitude_minutes}m** to clear {opt.repair.repaired_rule}.\n\n*{opt.repair.side_effects}*")
+
+                if opt.ledger.legal and on_finalize is not None:
+                    btn_label = f"🚀 Finalize & Adopt {opt.crew_id}" if is_top else f"✅ Adopt Option {idx+1} ({opt.crew_id})"
+                    if st.button(
+                        btn_label,
+                        key=f"{key_prefix}_finalize_{opt.crew_id}_{idx}",
+                        type="primary" if is_top else "secondary",
+                        use_container_width=True,
+                    ):
+                        on_finalize(opt)
 
             with cols[1]:
                 st.metric(label="Total Cost (INR)", value=f"₹{int(opt.cost.total_inr):,}")

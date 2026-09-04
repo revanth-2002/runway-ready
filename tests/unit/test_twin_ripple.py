@@ -71,3 +71,44 @@ def test_twin_sick_crew_propagation(base_state, repo):
     assert impact.passengers_affected > 0
     assert any("crew:C-1042" in s for s in impact.source_rows)
     assert any("DX412" in s for s in impact.source_rows)
+
+
+def test_reassign_overlay_and_recovery(base_state, repo):
+    """Verify that applying a reassign overlay resolves broken pairings and marks reserve crew as CALLED."""
+    # 1. Sick disruption
+    ov_sick = Overlay(
+        overlay_id="ov-sick-c1042",
+        kind="sick",
+        payload={"crew_id": "C-1042", "date": "2026-09-15"},
+        label="Captain Nair Sick",
+    )
+    disrupted_state = base_state.apply(ov_sick)
+    disrupted_view = disrupted_state.materialize()
+    first_flight = next(fid for fid in disrupted_view.flight_statuses if "DX412" in fid)
+    assert disrupted_view.flight_statuses[first_flight] == "UNCREWED"
+    assert disrupted_view.crew["C-3310"].assigned_pairing_id is None
+
+    # 2. Reassign overlay (finalizing recommendation)
+    ov_reassign = Overlay(
+        overlay_id="ov-reassign-c3310",
+        kind="reassign",
+        payload={
+            "replacement_crew_id": "C-3310",
+            "disrupted_crew_id": "C-1042",
+            "pairing_id": "P-2291",
+            "flight_ids": ["DX412"],
+            "cost_inr": 18500.0,
+        },
+        label="Reassigned C-3310 to P-2291",
+    )
+    recovered_state = disrupted_state.apply(ov_reassign)
+    recovered_view = recovered_state.materialize()
+
+    # 3. Verify digital twin state holds the changes
+    assert recovered_view.crew["C-3310"].assigned_pairing_id == "P-2291"
+    assert recovered_view.crew["C-3310"].on_call_status == "CALLED"
+    assert recovered_view.crew["C-1042"].is_incapacitated is True
+    assert recovered_view.crew["C-1042"].assigned_pairing_id is None
+
+    # 4. Verify uncrewed flight is restored to ON_TIME
+    assert recovered_view.flight_statuses[first_flight] == "ON_TIME"

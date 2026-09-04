@@ -157,16 +157,43 @@ def render_reserve_board(
         st.button("Next ▶", key=f"{key_prefix}_p_next_top", on_click=_go_next, disabled=(current_page >= total_pages - 1), use_container_width=True)
 
     # 4. Standby Crew Cards Grid (2 Columns, 20 items max)
+    live_twin = None
+    if "ops_state" in st.session_state:
+        try:
+            live_twin = st.session_state.ops_state.materialize()
+        except Exception:
+            live_twin = None
+
     card_cols = target.columns(2)
     for idx, r in enumerate(page_items):
         with card_cols[idx % 2]:
             with st.container(border=True):
                 rank_icon = "👨‍✈️" if "captain" in r["rank"].lower() else ("🧑‍✈️" if "first" in r["rank"].lower() else "👩‍✈️")
-                status_badge = "🟢 AVAILABLE" if r["standby_status"] == "AVAILABLE" else "🟡 CALLED"
+                
+                twin_c = live_twin.crew.get(r["crew_id"]) if live_twin else None
+                effective_status = r.get("standby_status", "STANDBY")
+                status_color = "#10b981"
+                
+                if twin_c:
+                    if twin_c.is_incapacitated:
+                        effective_status = "🔴 INCAPACITATED"
+                        status_color = "#ef4444"
+                    elif twin_c.assigned_pairing_id:
+                        effective_status = f"🟡 CALLED ({twin_c.assigned_pairing_id})"
+                        status_color = "#f59e0b"
+                    elif effective_status in ("AVAILABLE", "STANDBY"):
+                        effective_status = "🟢 AVAILABLE"
+                        status_color = "#10b981"
+                elif effective_status in ("AVAILABLE", "STANDBY"):
+                    effective_status = "🟢 AVAILABLE"
+                    status_color = "#10b981"
+                else:
+                    effective_status = f"🟡 {effective_status}"
+                    status_color = "#f59e0b"
 
                 st.markdown(
                     f"**{rank_icon} {r['name']}** (`{r['crew_id']}`) "
-                    f"<span style='float:right; font-size:12px; color:#10b981; font-weight:600;'>{status_badge}</span>",
+                    f"<span style='float:right; font-size:12px; color:{status_color}; font-weight:600;'>{effective_status}</span>",
                     unsafe_allow_html=True,
                 )
 

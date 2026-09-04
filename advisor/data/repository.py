@@ -495,3 +495,33 @@ class OpsRepository:
         )
         return [r["flight_id"] for r in cursor.fetchall()]
 
+    def get_crew_for_flight(self, flight_id: str, role: Optional[str] = "Captain") -> Optional[Crew]:
+        """Retrieves the crew member rostered on the pairing leg for a given flight number or flight_id."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        query = """
+            SELECT c.crew_id, c.name, c.rank, c.base, c.seniority, c.reachability_minutes
+            FROM pairing_leg pl
+            JOIN flight f ON pl.flight_id = f.flight_id
+            JOIN assignment a ON pl.pairing_id = a.pairing_id
+            JOIN crew c ON a.crew_id = c.crew_id
+            WHERE (pl.flight_id = ? OR f.flight_no = ? OR pl.flight_id LIKE ?)
+        """
+        params: List[Any] = [flight_id, flight_id, f"{flight_id}%"]
+        if role:
+            query += " AND a.role LIKE ?"
+            params.append(f"%{role}%")
+        query += " ORDER BY f.dep_utc ASC LIMIT 1"
+        cursor.execute(query, tuple(params))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return Crew(
+            crew_id=row["crew_id"],
+            name=row["name"],
+            rank=row["rank"],
+            base=row["base"],
+            seniority=row["seniority"],
+            reachability_minutes=row["reachability_minutes"],
+        )
+

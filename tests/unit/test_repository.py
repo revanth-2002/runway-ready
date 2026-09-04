@@ -74,3 +74,11 @@ def test_cost_rates(repo):
     rates = repo.get_cost_rates()
     assert rates["reserve_callout"] in (15000.0, 18500.0)
     assert "deadhead_DEL_BLR" in rates or "deadhead_positioning" in rates
+
+
+def test_get_crew_for_flight(repo):
+    """Verify looking up the rostered captain for a flight."""
+    crew = repo.get_crew_for_flight("DX412", role="Captain")
+    assert crew is not None
+    assert crew.crew_id == "C-1042"
+    assert "Nair" in crew.name

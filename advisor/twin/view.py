@@ -129,6 +129,46 @@ def build_digital_twin_view(
             flight_id = ov.payload.get("flight_id")
             if flight_id in flight_map:
                 flight_statuses[flight_id] = "CANCELLED"
+        elif ov.kind == "reassign":
+            replacement_id = ov.payload.get("replacement_crew_id")
+            pairing_id = ov.payload.get("pairing_id")
+            disrupted_id = ov.payload.get("disrupted_crew_id")
+            if replacement_id and replacement_id in crew_map:
+                cur = crew_map[replacement_id]
+                crew_map[replacement_id] = CrewMemberState(
+                    crew_id=cur.crew_id,
+                    base=cur.base,
+                    rank=cur.rank,
+                    current_station=cur.current_station,
+                    last_duty_end_utc=cur.last_duty_end_utc,
+                    cumulative_duty_7d=cur.cumulative_duty_7d,
+                    cumulative_flight_28d=cur.cumulative_flight_28d,
+                    on_call_status="CALLED",
+                    assigned_pairing_id=pairing_id,
+                    is_incapacitated=False,
+                )
+            if disrupted_id and disrupted_id in crew_map:
+                cur_d = crew_map[disrupted_id]
+                crew_map[disrupted_id] = CrewMemberState(
+                    crew_id=cur_d.crew_id,
+                    base=cur_d.base,
+                    rank=cur_d.rank,
+                    current_station=cur_d.current_station,
+                    last_duty_end_utc=cur_d.last_duty_end_utc,
+                    cumulative_duty_7d=cur_d.cumulative_duty_7d,
+                    cumulative_flight_28d=cur_d.cumulative_flight_28d,
+                    on_call_status="SICK",
+                    assigned_pairing_id=None,
+                    is_incapacitated=True,
+                )
+            delay_minutes = ov.payload.get("delay_minutes", 0)
+            delayed_fid = ov.payload.get("delayed_flight_id")
+            if delayed_fid and delay_minutes > 0 and delayed_fid in flight_map:
+                from datetime import timedelta
+                from advisor.domain.timeutil import parse_utc, format_utc
+                orig_dep = parse_utc(flight_map[delayed_fid].dep_utc)
+                flight_statuses[delayed_fid] = "DELAYED"
+                flight_estimated_deps[delayed_fid] = format_utc(orig_dep + timedelta(minutes=delay_minutes))
 
     from advisor.twin.ripple import propagate_ripples
     return propagate_ripples(

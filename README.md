@@ -3,11 +3,12 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.39%2B-FF4B4B.svg)](https://streamlit.io/)
 [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-Live%20SDK-4285F4.svg)](https://ai.google.dev/)
-[![Tests](https://img.shields.io/badge/tests-59%2F59%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-73%2F73%20passed-brightgreen.svg)]()
 [![Evaluation](https://img.shields.io/badge/dCortex%20Benchmark-47%2F47%20(100%25)-success.svg)]()
 [![DGCA CAR Sec 7](https://img.shields.io/badge/DGCA%20Compliance-Pure%20Deterministic-emerald.svg)]()
+[![FastAPI](https://img.shields.io/badge/REST%20API-FastAPI%20v1-blue.svg)]()
 
-**Crew Ops Advisor** is an airline operations control (AOC) decision-support system and digital twin engine. Built for disruption management, pairing recovery, and crew reserve allocation, it delivers **100% deterministic, mathematically verifiable, and cost-ranked recovery recommendations** under Indian DGCA CAR Section 7 regulations.
+**Crew Ops Advisor** is an enterprise airline operations control (AOC) decision-support system and digital twin engine. Built for disruption management, pairing recovery, and crew reserve allocation, it delivers **100% deterministic, mathematically verifiable, and cost-ranked recovery recommendations** under Indian DGCA CAR Section 7 regulations.
 
 ---
 
@@ -15,9 +16,12 @@
 
 - [Key Highlights](#-key-highlights)
 - [System Architecture](#-system-architecture)
+- [Backend REST API Endpoints (/api/v1)](#-backend-rest-api-endpoints-apiv1)
+- [The 4 Essential Airline Dashboard Workspaces](#-the-4-essential-airline-dashboard-workspaces)
 - [Project Directory Structure](#-project-directory-structure)
 - [Prerequisites & Requirements](#-prerequisites--requirements)
 - [Quickstart & Setup Guide](#-quickstart--setup-guide)
+- [Running the REST API Microservice](#-running-the-rest-api-microservice)
 - [Running the Streamlit UI Console](#-running-the-streamlit-ui-console)
 - [Running the CLI](#-running-the-cli)
 - [Automated Testing & Verification](#-automated-testing--verification)
@@ -28,15 +32,18 @@
 
 ## 🌟 Key Highlights
 
+- **Decoupled REST API Endpoints Layer (`advisor/api/`)**: Clear, structured paths (`/api/v1/...`) powered by FastAPI and Pydantic schemas. Supports dual-execution mode: standalone HTTP microservice or high-performance in-process ASGI execution.
 - **Pure Deterministic Rule Sovereignty**: Zero LLM hallucination in legality or costing. Every legality verdict is computed via signed arithmetic margins (`+3.4h Margin` or `-1.2h Violation`) directly against DGCA CAR Section 7.
+- **Automated Server Startup Pre-Warming (`advisor/twin/warm.py`)**: Automatic digital twin pre-materialization and DB validation on server boot. Pre-populates fleet rotations (`VT-DXA`..`VT-DXF`), crew clocks, and reserve rosters across 5 network stations (`BLR`, `DEL`, `BOM`, `HYD`, `MAA`) in ~130ms.
 - **Operational Digital Twin (`advisor/twin/`)**: In-memory immutable overlay stack (`OpsState`) that models disruptions, propagates aircraft tail turnaround delays, and detects cascading pairing breakdowns without corrupting baseline databases.
 - **Reconciled Dual-Clock Relational Storage (`advisor/data/`)**: SQLite database (`data/ops.db`) with 12 normalized tables. Reconciles duty history clocks across all 150 crew members down to the minute (**0.0h delta / 0 mismatches**).
 - **Google Gemini Reasoning & Privacy Boundary**: Powered by the modern `google-genai` SDK with strict local PII anonymization (`resolver.py`). Zero pilot names or sensitive crew identifiers are ever transmitted externally. Includes a deterministic `StubClient` for 100% air-gapped offline execution.
-- **Modern AOC Controller Console (`ui/app.py`)**:
-  - **🚨 Disruption & Decision Support**: Split-pane view featuring real-time pairing impact analysis, ranked candidate options, actionable minimal repair levers (`delay_departure`), and legality ledgers.
-  - **👥 Standby & Reserve Operations Board**: 2-column responsive layout, fast 20-item cursor pagination, real-time KPI metrics, station/rank/fleet filters, and instant copyable callout dispatch directives.
-  - **✈️ Aircraft Tail Gantt Matrix**: Interactive timeline grouped by aircraft tail (`VT-DXA`..`VT-DXF`) with flight route chips, disruption window reference lines, and an operational manifest.
-  - **⚓ Static Fixed Command Footer**: Pinned permanently to the bottom of the window, allowing content to scroll smoothly behind it while the command prompt remains static and accessible at all times.
+- **4 Essential Airline Dashboard Workspaces ([Information Design](https://www.informationdesign.io/2021/05/31/the-4-most-essential-workspaces-your-airline-dashboard-must-have-with-examples-2/))**:
+  1. 🌐 **Network Overview**: High-level executive KPI ribbon (punctuality rate, active fleet, seats at risk) + 5 hub station operational health cards.
+  2. 🚨 **Disruption Cockpit**: Real-time disruption solver, split-pane Gantt diff, DGCA legality ledgers, ranked options, and **"🚀 Finalize & Adopt"** decision commitment.
+  3. 👥 **Standby Roster**: Responsive 2-column crew cards, 20-item cursor pagination, filters, and dynamic status badges (`🟢 AVAILABLE`, `🟡 CALLED`, `🔴 INCAPACITATED`).
+  4. ✈️ **Fleet & Schedule**: Plotly Gantt tail rotation matrix + comprehensive Flight Operations Manifest with status badges.
+- **⚓ Static Fixed Command Footer**: Pinned permanently to the bottom of the window across all 4 workspaces, receiving directives from anywhere.
 - **Cryptographic SHA-256 Audit Certificate**: Generates tamper-evident cryptographic certificates (`cert.json`) binding input state hashes, candidate rankings, and legality ledger signatures for regulatory reporting.
 
 ---
@@ -87,11 +94,76 @@ flowchart TD
 
 ---
 
+## 🌐 Backend REST API Endpoints (`/api/v1`)
+
+The backend exposes a high-performance REST API powered by **FastAPI** and **Pydantic v2** under `advisor/api/`. Any external dashboard, mobile console, or microservice can interact with the digital twin via clean, typed endpoints:
+
+| Method | Endpoint Path | Description & Payload |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/health` | Service health, LLM provider mode (`gemini_live` vs `deterministic_stub`), and twin status. |
+| `GET` | `/api/v1/network/overview` | Executive network KPIs (punctuality %, seats at risk) and 5 hub station status cards. |
+| `POST` | `/api/v1/disruptions/simulate` | Simulates natural language disruption directives, returns DGCA legality ledger, diff Gantt, and ranked options. |
+| `POST` | `/api/v1/recommendations/finalize` | Commits `reassign` overlay to digital twin, marks reserve as `CALLED`, restores uncrewed flights to `ON_TIME`. |
+| `GET` | `/api/v1/reserves` | Standby crew members filtered by station (`BLR`, `DEL`, etc.), rank, and live overlay availability. |
+| `GET` | `/api/v1/fleet/rotations` | Active aircraft tails (`VT-DXA`..`VT-DXF`) and complete flight operations manifest. |
+| `GET` | `/api/v1/twin/state` | Returns the active overlay stack and controller decision history. |
+| `POST` | `/api/v1/twin/undo` | Pops the top overlay from the digital twin stack. |
+| `POST` | `/api/v1/twin/reset` | Purges all overlays and re-materializes the baseline digital twin at 06:00Z. |
+| `GET` | `/api/v1/stations/{station_code}` | Deep-dive station status: METAR/TAF weather observations, forecasts, departures, arrivals, and delays for hub bases (`BLR`, `DEL`, `BOM`, `HYD`, `MAA`). |
+
+### Running the Standalone API Service:
+```bash
+# Launch FastAPI service on port 8000
+python3 -m advisor.api.server
+# Or via uvicorn
+uvicorn advisor.api.server:app --host 0.0.0.0 --port 8000
+```
+Interactive Swagger API documentation is available at: **`http://localhost:8000/docs`**
+
+---
+
+## 🖥️ The 4 Essential Airline Dashboard Workspaces
+
+Aligned with the [Information Design framework](https://www.informationdesign.io/2021/05/31/the-4-most-essential-workspaces-your-airline-dashboard-must-have-with-examples-2/), the console organizes operational data into 4 focused channels:
+
+1. **🌐 Workspace 1: Network Overview (High-Level Situational Awareness)**:
+   - **Executive Metric Ribbon**: Active fleet count (6 tails), scheduled flights (147), network on-time rate %, active disruption alerts, passenger seats at risk, and total available standby reserves.
+   - **5 Hub Station Health Cards**: Status, scheduled departures, and available reserves for `BLR`, `DEL`, `BOM`, `HYD`, and `MAA` with runway maintenance/weather notices.
+   - **Quick-Launch Directives**: Instant triggers for common operational scenarios.
+
+2. **🚨 Workspace 2: Disruption Cockpit (Tactical Decision Support & Recovery)**:
+   - Natural language scenario simulator with anti-hallucination slot validator.
+   - Split-pane layout: Disruption impact report and DGCA CAR Section 7 Legality Ledger on the left; Forward Plotly Gantt diff on the right.
+   - **Ranked Candidate Options**: Lexicographically ordered with line-item cost breakdowns, decision half-life countdown, and minimal repair levers (`delay_departure`).
+   - **🚀 Finalize & Adopt**: Interactive button to adopt recommendations, write overlays, and update crew statuses in memory.
+
+3. **👥 Workspace 3: Standby Roster (Resource Allocation)**:
+   - **100% Unchanged Crew Cards Architecture**: 2-column responsive layout, 20-item cursor pagination (`Previous` / `Next`), quick-copy callout directives, and station/rank filters.
+   - Dynamic status badges: `🟢 AVAILABLE`, `🟡 CALLED (Pairing)`, `🔴 INCAPACITATED`.
+
+4. **✈️ Workspace 4: Fleet & Schedule (Aircraft Rotations & Manifest)**:
+   - **Interactive Tail Gantt Matrix**: Rotation timeline grouped by aircraft tail (`VT-DXA`..`VT-DXF`) with 30m turnaround buffers and disruption lines.
+   - **Flight Operations Manifest**: Complete searchable and filterable flight schedule table with live operational status badges (`ON_TIME`, `DELAYED`, `UNCREWED`).
+
+5. **📍 Workspace 5: Airport Hubs & Aviation Weather (BLR, DEL, BOM, HYD, MAA)**:
+   - **Station Flight Movements Board**: Live departures and arrivals with scheduled vs. estimated timestamps, delay minutes, gate/stand allocations, tail assignments, passenger loads, and status filters.
+   - **Aviation Weather Decoders**: Decoded METAR surface observations (VFR/MVFR/IFR flight category, crosswind component in kts, altimeter QNH, cloud ceilings, braking advisories).
+   - **24-Hour TAF Horizon**: 4-period diurnal forecast cards (Morning, Afternoon, Evening, Night) with precipitation probabilities and convective cloud warnings.
+
+6. **⚓ Universal Docked Command Footer**:
+   - Pinned permanently to the bottom of the window (`bottom: 0px`) across all workspaces, receiving operational directives from any screen.
+
+
 ## 📂 Project Directory Structure
 
 ```text
 runway-ready/
 ├── advisor/                        # Core Engine Package
+│   ├── api/                        # Decoupled REST API & Client SDK Layer (/api/v1/...)
+│   │   ├── client.py               # ApiClient SDK (HTTP + ASGI in-process fallback)
+│   │   ├── routes.py               # FastAPI route handlers, weather loader, twin manager
+│   │   ├── schemas.py              # Pydantic v2 request & response schemas
+│   │   └── server.py               # FastAPI application entrypoint & lifespan
 │   ├── audit/                      # Cryptographic certificates & structured logging
 │   │   ├── certificate.py          # SHA-256 tamper-evident certificate generator
 │   │   └── logger.py               # Standardized JSON structured logger
@@ -101,9 +173,14 @@ runway-ready/
 │   │   └── schema.sql              # 12-table relational DDL schema
 │   ├── domain/                     # Domain models, exceptions, and time utilities
 │   │   ├── evidence.py             # RecoveryOption, LegalityLedger, CostBreakdown
-│   │   ├── models.py               # Crew, Flight, Pairing, Rotation, Reserve models
 │   │   ├── state.py                # Immutable OpsState & Overlay stack
-│   │   └── timeutil.py             # ISO-8601 UTC arithmetic & window parsers
+│   │   ├── timeutil.py             # ISO-8601 UTC arithmetic & window parsers
+│   │   └── types.py                # Crew, Flight, Pairing, Rotation, Reserve models
+│   ├── twin/                       # Digital Twin & Pre-Warming Engine
+│   │   ├── diff.py                 # Delta computation between twin snapshots
+│   │   ├── ripple.py               # Downstream tail turnaround & pairing propagation
+│   │   ├── view.py                 # Materialized in-memory twin projection
+│   │   └── warm.py                 # Server startup pre-warming & DB health validation
 │   ├── llm/                        # Language model gateways & client abstraction
 │   │   ├── client.py               # Google Gemini client & deterministic StubClient
 │   │   ├── parser.py               # Intent extraction & slot resolution
@@ -123,17 +200,20 @@ runway-ready/
 │   │   └── pure_rules.py           # 7 pure DGCA CAR Section 7 algorithms
 │   └── cli.py                      # Interactive terminal CLI tool
 ├── crew-ops-advisor-dataset/       # Official dCortex benchmark datasets
-│   └── data/                       # flights.json, crew.json, rosters.json, etc.
-├── data/                           # Reconciled SQLite operational database (ops.db)
+│   └── data/                       # flights.json, crew.json, rosters.json, weather.json, etc.
+├── data/                           # Reconciled SQLite operational database & datasets
+│   ├── ops.db                      # Reconciled SQLite operational database
+│   └── weather.json                # Hub METAR/TAF & airport operational metadata
 ├── eval/                           # Automated Benchmark Evaluation Suite
 │   ├── harness.py                  # 38 questions + 6 scenarios + 3 abstentions
 │   └── test_queries.py             # Benchmark query fixtures
-├── tests/                          # Automated Pytest Suite (59 tests)
+├── tests/                          # Automated Pytest Suite (77 tests)
 │   ├── integration/                # Ingestion, runner, and scenario tests
-│   └── unit/                       # Rule limits, twin ripples, costing, LLM client
+│   └── unit/                       # Rule limits, twin ripples, costing, API & weather tests
 ├── ui/                             # Streamlit AOC Controller Console
-│   ├── app.py                      # Main entrypoint & 3-tab layout
+│   ├── app.py                      # Main entrypoint & 4-workspace layout
 │   └── components/                 # Modular UI components
+│       ├── airport.py              # Airport Hub station movements & weather view
 │       ├── cards.py                # Ranked candidate option cards
 │       ├── gantt.py                # Plotly aircraft rotation Gantt matrix
 │       ├── ledger.py               # Regulatory pass/fail ledger table
@@ -195,12 +275,12 @@ LOG_LEVEL=INFO
 > [!NOTE]
 > If `GEMINI_API_KEY` is not provided, the application will automatically fall back to **Offline Deterministic Stub Mode**. The full rule engine, digital twin, and evaluation harness will still function with 100% test passing accuracy.
 
-### 5. Initialize the Digital Twin Database
-The database will be automatically created on first launch, or you can build it explicitly:
+### 5. Initialize & Pre-Warm the Digital Twin
+The operations database and digital twin are automatically validated and pre-warmed into memory on server launch. You can also explicitly warm and verify the digital twin via CLI:
 ```bash
-python3 -c "from advisor.data.ingest import build_database; build_database()"
+python3 -m advisor.twin.warm
 ```
-This reconciles all raw JSON data into SQLite at `data/ops.db`.
+This reconciles all raw JSON data into SQLite at `data/ops.db`, validates database schema integrity, and pre-materializes fleet rotations across all hub stations (`BLR`, `DEL`, `BOM`, `HYD`, `MAA`) in ~200ms.
 
 ---
 

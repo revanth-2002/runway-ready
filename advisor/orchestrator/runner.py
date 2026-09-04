@@ -166,13 +166,28 @@ def orchestrate(
 
 
     # Tier 2 & 3: Disruption Simulation & Candidate Ranking
-    disrupted_crew_id = crew_ids[0] if crew_ids else (
-        intent_bundle.entities.get("crew_ids", ["C-1042"])[0] if intent_bundle.entities.get("crew_ids") else "C-1042"
-    )
+    disrupted_crew_id = None
+    if crew_ids:
+        disrupted_crew_id = crew_ids[0]
+    elif intent_bundle.entities.get("crew_ids"):
+        disrupted_crew_id = intent_bundle.entities["crew_ids"][0]
+    elif intent_bundle.entities.get("flight_ids"):
+        for fid in intent_bundle.entities["flight_ids"]:
+            rostered_c = repo.get_crew_for_flight(fid, role="Captain")
+            if rostered_c:
+                disrupted_crew_id = rostered_c.crew_id
+                break
 
-    yield ("status", f"Forking Digital Twin shadow branch for crew {disrupted_crew_id}...")
+    if not disrupted_crew_id:
+        disrupted_crew_id = "C-1042"
+
+    import uuid
+    req_id = f"req-{uuid.uuid4().hex[:6]}"
+    overlay_id = f"ov-sick-{disrupted_crew_id}-{req_id}"
+
+    yield ("status", f"Forking Digital Twin shadow branch for crew {disrupted_crew_id} ({req_id})...")
     ov = Overlay(
-        overlay_id=f"ov-sick-{disrupted_crew_id}",
+        overlay_id=overlay_id,
         kind="sick",
         payload={"crew_id": disrupted_crew_id, "date": "2026-09-15"},
         label=f"Sick callout for {disrupted_crew_id}",
@@ -212,7 +227,19 @@ def orchestrate(
         ledger = LegalityLedger(subject=disrupted_crew_id, context="no_pairing", verdicts=[])
 
     # Stream evidence frame
-    yield ("evidence", {"impact": impact, "ledger": ledger, "twin_view": shadow_view})
+    yield (
+        "evidence",
+        {
+            "impact": impact,
+            "ledger": ledger,
+            "twin_view": shadow_view,
+            "disrupted_crew_id": disrupted_crew_id,
+            "broken_pairing_id": pairing.pairing_id if pairing else None,
+            "flight_ids": [f.flight_id for f in pairing.legs] if pairing else [],
+            "disruption_overlay": ov,
+            "request_id": req_id,
+        },
+    )
 
     yield ("status", "Searching legal reserve candidates and computing repair levers...")
     rates = repo.get_cost_rates()

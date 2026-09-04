@@ -1,0 +1,343 @@
+{
+  "BLR": {
+    "airport_name": "Kempegowda International Airport",
+    "city": "Bengaluru",
+    "icao": "VOBL",
+    "elevation_ft": 3000,
+    "runways": [
+      "09L/27R (Active · Primary)",
+      "09R/27L (Scheduled Maintenance 08:00Z–11:00Z)"
+    ],
+    "weather": {
+      "metar_raw": "VOBL 150600Z 09012KT 6000 FEW025 SCT080 27/18 Q1012 NOSIG",
+      "taf_raw": "TAF VOBL 150500Z 1506/1612 09010KT 7000 SCT030 BECMG 1512/1514 11008KT 5000 HZ TEMPO 1514/1517 4000 TSRA SCT020CB",
+      "flight_category": "VFR",
+      "temperature_c": 27.0,
+      "dewpoint_c": 18.0,
+      "wind_direction_deg": 90,
+      "wind_speed_kts": 12,
+      "wind_gusts_kts": null,
+      "visibility_m": 6000,
+      "altimeter_hpa": 1012,
+      "clouds": "FEW 2,500 ft, SCT 8,000 ft",
+      "runway_in_use": "Runway 09L (Direct headwind 12 kts, Crosswind 0 kts)",
+      "crosswind_component_kts": 0,
+      "advisory": "Runway 09R/27L closed for routine friction testing & surface sweep 08:00Z–11:00Z. All operations routed to Runway 09L/27R. Capacity: 34 movements/hour.",
+      "forecast_periods": [
+        {
+          "period_name": "Morning (06:00–12:00Z)",
+          "time_utc": "06:00Z",
+          "condition": "Scattered Clouds",
+          "icon": "⛅",
+          "temp_c": 27,
+          "wind_str": "090°/10kt",
+          "precip_prob_pct": 10,
+          "ceiling": "2,500 ft"
+        },
+        {
+          "period_name": "Afternoon (12:00–18:00Z)",
+          "time_utc": "12:00Z",
+          "condition": "Isolated TSRA",
+          "icon": "⛈️",
+          "temp_c": 30,
+          "wind_str": "110°/12kt",
+          "precip_prob_pct": 35,
+          "ceiling": "2,000 ft CB"
+        },
+        {
+          "period_name": "Evening (18:00–00:00Z)",
+          "time_utc": "18:00Z",
+          "condition": "Hazy Sunshine",
+          "icon": "🌤️",
+          "temp_c": 24,
+          "wind_str": "080°/08kt",
+          "precip_prob_pct": 15,
+          "ceiling": "3,000 ft"
+        },
+        {
+          "period_name": "Night (00:00–06:00Z)",
+          "time_utc": "00:00Z",
+          "condition": "Calm & Clear",
+          "icon": "🌙",
+          "temp_c": 21,
+          "wind_str": "060°/05kt",
+          "precip_prob_pct": 5,
+          "ceiling": "Clear"
+        }
+      ]
+    }
+  },
+  "DEL": {
+    "airport_name": "Indira Gandhi International Airport",
+    "city": "Delhi",
+    "icao": "VIDP",
+    "elevation_ft": 777,
+    "runways": [
+      "10/28 (Active)",
+      "11L/29R (Active)",
+      "09/27 (Active)"
+    ],
+    "weather": {
+      "metar_raw": "VIDP 150600Z 28008KT 4000 HZ NSC 34/21 Q1008 NOSIG",
+      "taf_raw": "TAF VIDP 150500Z 1506/1612 29010KT 5000 HZ NSC BECMG 1515/1517 26006KT 3500 FU",
+      "flight_category": "MVFR",
+      "temperature_c": 34.0,
+      "dewpoint_c": 21.0,
+      "wind_direction_deg": 280,
+      "wind_speed_kts": 8,
+      "wind_gusts_kts": null,
+      "visibility_m": 4000,
+      "altimeter_hpa": 1008,
+      "clouds": "Nil Significant Cloud",
+      "runway_in_use": "Runway 28 & 29R in parallel departure flow",
+      "crosswind_component_kts": 3,
+      "advisory": "High traffic density in sector North. Departure metering in effect; taxi times +10m.",
+      "forecast_periods": [
+        {
+          "period_name": "Morning (06:00–12:00Z)",
+          "time_utc": "06:00Z",
+          "condition": "Hazy",
+          "icon": "🌫️",
+          "temp_c": 34,
+          "wind_str": "280°/08kt",
+          "precip_prob_pct": 5,
+          "ceiling": "Clear"
+        },
+        {
+          "period_name": "Afternoon (12:00–18:00Z)",
+          "time_utc": "12:00Z",
+          "condition": "Hot & Dusty",
+          "icon": "☀️",
+          "temp_c": 37,
+          "wind_str": "290°/10kt",
+          "precip_prob_pct": 0,
+          "ceiling": "Clear"
+        },
+        {
+          "period_name": "Evening (18:00–00:00Z)",
+          "time_utc": "18:00Z",
+          "condition": "Haze / Smog",
+          "icon": "🌫️",
+          "temp_c": 30,
+          "wind_str": "260°/06kt",
+          "precip_prob_pct": 0,
+          "ceiling": "Clear"
+        },
+        {
+          "period_name": "Night (00:00–06:00Z)",
+          "time_utc": "00:00Z",
+          "condition": "Cool / Clear",
+          "icon": "🌙",
+          "temp_c": 26,
+          "wind_str": "240°/04kt",
+          "precip_prob_pct": 0,
+          "ceiling": "Clear"
+        }
+      ]
+    }
+  },
+  "BOM": {
+    "airport_name": "Chhatrapati Shivaji Maharaj International Airport",
+    "city": "Mumbai",
+    "icao": "VABB",
+    "elevation_ft": 39,
+    "runways": [
+      "09/27 (Active)",
+      "14/32 (Cross-runway standby)"
+    ],
+    "weather": {
+      "metar_raw": "VABB 150600Z 25016G24KT 5000 -RA SCT018 BKN080 29/25 Q1009 TEMPO 3000 SHRA",
+      "taf_raw": "TAF VABB 150500Z 1506/1612 26018KT 5000 -RA BKN020 TEMPO 1509/1515 3000 SHRA/TSRA G30KT",
+      "flight_category": "MVFR",
+      "temperature_c": 29.0,
+      "dewpoint_c": 25.0,
+      "wind_direction_deg": 250,
+      "wind_speed_kts": 16,
+      "wind_gusts_kts": 24,
+      "visibility_m": 5000,
+      "altimeter_hpa": 1009,
+      "clouds": "SCT 1,800 ft, BKN 8,000 ft",
+      "runway_in_use": "Runway 27 (Headwind 15 kts, Crosswind 5 kts)",
+      "crosswind_component_kts": 5,
+      "advisory": "Coastal crosswinds gusting to 24 kts. Light passing rain showers. Braking action good.",
+      "forecast_periods": [
+        {
+          "period_name": "Morning (06:00–12:00Z)",
+          "time_utc": "06:00Z",
+          "condition": "Passing Showers",
+          "icon": "🌦️",
+          "temp_c": 29,
+          "wind_str": "250°/16G24kt",
+          "precip_prob_pct": 60,
+          "ceiling": "1,800 ft"
+        },
+        {
+          "period_name": "Afternoon (12:00–18:00Z)",
+          "time_utc": "12:00Z",
+          "condition": "Heavy Showers",
+          "icon": "🌧️",
+          "temp_c": 30,
+          "wind_str": "260°/18G28kt",
+          "precip_prob_pct": 75,
+          "ceiling": "1,500 ft"
+        },
+        {
+          "period_name": "Evening (18:00–00:00Z)",
+          "time_utc": "18:00Z",
+          "condition": "Breezy / Drizzle",
+          "icon": "🌧️",
+          "temp_c": 27,
+          "wind_str": "240°/14kt",
+          "precip_prob_pct": 40,
+          "ceiling": "2,000 ft"
+        },
+        {
+          "period_name": "Night (00:00–06:00Z)",
+          "time_utc": "00:00Z",
+          "condition": "Humid / Overcast",
+          "icon": "☁️",
+          "temp_c": 26,
+          "wind_str": "230°/10kt",
+          "precip_prob_pct": 30,
+          "ceiling": "2,200 ft"
+        }
+      ]
+    }
+  },
+  "HYD": {
+    "airport_name": "Rajiv Gandhi International Airport",
+    "city": "Hyderabad",
+    "icao": "VOHS",
+    "elevation_ft": 2024,
+    "runways": [
+      "09L/27R (Active)",
+      "09R/27L (Active)"
+    ],
+    "weather": {
+      "metar_raw": "VOHS 150600Z 11009KT 7000 FEW030 31/19 Q1011 NOSIG",
+      "taf_raw": "TAF VOHS 150500Z 1506/1612 12010KT 8000 SCT035 NOSIG",
+      "flight_category": "VFR",
+      "temperature_c": 31.0,
+      "dewpoint_c": 19.0,
+      "wind_direction_deg": 110,
+      "wind_speed_kts": 9,
+      "wind_gusts_kts": null,
+      "visibility_m": 7000,
+      "altimeter_hpa": 1011,
+      "clouds": "FEW 3,000 ft",
+      "runway_in_use": "Runway 09L in use",
+      "crosswind_component_kts": 3,
+      "advisory": "Nominal operations. Unrestricted runway availability.",
+      "forecast_periods": [
+        {
+          "period_name": "Morning (06:00–12:00Z)",
+          "time_utc": "06:00Z",
+          "condition": "Sunny",
+          "icon": "☀️",
+          "temp_c": 31,
+          "wind_str": "110°/09kt",
+          "precip_prob_pct": 0,
+          "ceiling": "Clear"
+        },
+        {
+          "period_name": "Afternoon (12:00–18:00Z)",
+          "time_utc": "12:00Z",
+          "condition": "Warm",
+          "icon": "☀️",
+          "temp_c": 34,
+          "wind_str": "120°/10kt",
+          "precip_prob_pct": 5,
+          "ceiling": "3,500 ft"
+        },
+        {
+          "period_name": "Evening (18:00–00:00Z)",
+          "time_utc": "18:00Z",
+          "condition": "Clear Sky",
+          "icon": "🌤️",
+          "temp_c": 27,
+          "wind_str": "100°/07kt",
+          "precip_prob_pct": 0,
+          "ceiling": "Clear"
+        },
+        {
+          "period_name": "Night (00:00–06:00Z)",
+          "time_utc": "00:00Z",
+          "condition": "Pleasant",
+          "icon": "🌙",
+          "temp_c": 23,
+          "wind_str": "090°/05kt",
+          "precip_prob_pct": 0,
+          "ceiling": "Clear"
+        }
+      ]
+    }
+  },
+  "MAA": {
+    "airport_name": "Chennai International Airport",
+    "city": "Chennai",
+    "icao": "VOMM",
+    "elevation_ft": 52,
+    "runways": [
+      "07/25 (Active)",
+      "12/30 (Active)"
+    ],
+    "weather": {
+      "metar_raw": "VOMM 150600Z 08014KT 6000 FEW020 SCT100 32/24 Q1010 NOSIG",
+      "taf_raw": "TAF VOMM 150500Z 1506/1612 09012KT 7000 SCT025 NOSIG",
+      "flight_category": "VFR",
+      "temperature_c": 32.0,
+      "dewpoint_c": 24.0,
+      "wind_direction_deg": 80,
+      "wind_speed_kts": 14,
+      "wind_gusts_kts": null,
+      "visibility_m": 6000,
+      "altimeter_hpa": 1010,
+      "clouds": "FEW 2,000 ft, SCT 10,000 ft",
+      "runway_in_use": "Runway 07 (Sea breeze established)",
+      "crosswind_component_kts": 2,
+      "advisory": "Steady coastal sea breeze from 080°. Visibility good.",
+      "forecast_periods": [
+        {
+          "period_name": "Morning (06:00–12:00Z)",
+          "time_utc": "06:00Z",
+          "condition": "Sea Breeze / Sun",
+          "icon": "🌤️",
+          "temp_c": 32,
+          "wind_str": "080°/14kt",
+          "precip_prob_pct": 10,
+          "ceiling": "2,000 ft"
+        },
+        {
+          "period_name": "Afternoon (12:00–18:00Z)",
+          "time_utc": "12:00Z",
+          "condition": "Partly Cloudy",
+          "icon": "⛅",
+          "temp_c": 33,
+          "wind_str": "090°/12kt",
+          "precip_prob_pct": 20,
+          "ceiling": "2,500 ft"
+        },
+        {
+          "period_name": "Evening (18:00–00:00Z)",
+          "time_utc": "18:00Z",
+          "condition": "Breezy / Mild",
+          "icon": "🌙",
+          "temp_c": 28,
+          "wind_str": "070°/10kt",
+          "precip_prob_pct": 10,
+          "ceiling": "Clear"
+        },
+        {
+          "period_name": "Night (00:00–06:00Z)",
+          "time_utc": "00:00Z",
+          "condition": "Calm",
+          "icon": "🌙",
+          "temp_c": 25,
+          "wind_str": "060°/06kt",
+          "precip_prob_pct": 0,
+          "ceiling": "Clear"
+        }
+      ]
+    }
+  }
+}
