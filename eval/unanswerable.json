@@ -1,0 +1,17 @@
+[
+  {
+    "id": "u1",
+    "query": "Is Captain C-9999 available to fly DX412?",
+    "expected_reason": "UNKNOWN_ENTITY"
+  },
+  {
+    "id": "u2",
+    "query": "Can we get hotel bookings and baggage vouchers for DX412 passengers?",
+    "expected_reason": "OUT_OF_SCOPE"
+  },
+  {
+    "id": "u3",
+    "query": "Who can fly sometime in the afternoon?",
+    "expected_reason": "AMBIGUOUS_TIME"
+  }
+]
