@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple
-from advisor.audit.logger import StructuredLogger, append_audit_event
+from advisor.audit.logger import StructuredLogger, append_audit_event, set_request_id
 from advisor.data.repository import OpsRepository, DEFAULT_DB_PATH
 from advisor.domain.evidence import LegalityLedger, RuleVerdict
 from advisor.domain.state import OpsState, Overlay
@@ -35,6 +35,7 @@ def orchestrate(
     state: OpsState,
     repo: Optional[OpsRepository] = None,
     client: Optional[LLMClient] = None,
+    request_id: Optional[str] = None,
 ) -> Generator[Tuple[str, Any], None, None]:
     """Autonomous AI Agent generator dispatching modular tools based on extracted intent and entities:
     1. ('status', '<message>')
@@ -44,6 +45,8 @@ def orchestrate(
     5. ('options', [<RecoveryOption>, ...])
     6. ('prose', '<briefing text>')
     """
+    if request_id:
+        set_request_id(request_id)
     if repo is None:
         repo = OpsRepository(state.db_path)
     if client is None:
@@ -60,7 +63,11 @@ def orchestrate(
     if abstention:
         reason, message = abstention
         logger.info("Abstention triggered", reason=reason.value, detail=message)
-        append_audit_event("ABSTENTION", {"reason": reason.value, "query": query, "message": message})
+        append_audit_event(
+            "ABSTENTION",
+            {"reason": reason.value, "query": query, "message": message},
+            request_id=request_id,
+        )
         yield ("abstain", {"reason": reason.value, "message": message})
         return
 
@@ -334,4 +341,5 @@ def orchestrate(
             "uncrewed_count": len(impact.uncrewed_flights),
             "top_candidate": ranked_options[0].crew_id if ranked_options else None,
         },
+        request_id=request_id,
     )

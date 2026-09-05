@@ -1,12 +1,13 @@
 """REST API Route handlers for Crew Ops Advisor (/api/v1/...)."""
 
+import asyncio
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Path as FastApiPath, Query, status
 
 from advisor.api.schemas import (
     CandidateOptionSchema,
@@ -59,7 +60,13 @@ class TwinManager:
         self.repo: OpsRepository = self.warmed["repo"]
         self.action_history: List[Dict[str, Any]] = []
 
-    def reset(self, force_rebuild: bool = True):
+    def reset(self, force_rebuild: bool = False):
+        if hasattr(self, "repo") and getattr(self.repo, "_conn", None):
+            try:
+                self.repo._conn.close()
+                self.repo._conn = None
+            except Exception:
+                pass
         self.warmed = warm_operational_digital_twin(db_path=self.db_path, force_rebuild=force_rebuild)
         self.state = self.warmed["state"]
         self.repo = self.warmed["repo"]
@@ -212,14 +219,21 @@ AIRPORT_METADATA: Dict[str, Any] = load_airport_metadata()
 
 
 @router.get("/stations/{station_code}", response_model=StationDetailResponse)
-def get_station_details(station_code: str) -> StationDetailResponse:
+def get_station_details(
+    station_code: str = FastApiPath(
+        ...,
+        pattern="^[A-Za-z]{3}$",
+        description="3-letter IATA station code (e.g. BLR, DEL, BOM, HYD, MAA)",
+        examples=["BLR"],
+    )
+) -> StationDetailResponse:
     """Returns deep-dive operational status for an airport hub: weather, forecasts, arrivals, departures."""
     code = station_code.upper()
     meta_all = load_airport_metadata() or AIRPORT_METADATA
     if code not in meta_all:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Station '{station_code}' not recognized. Supported hubs: {list(meta_all.keys())}",
+            detail=f"Station '{station_code}' not recognized.",
         )
 
     meta = meta_all[code]
@@ -351,14 +365,25 @@ def get_station_details(station_code: str) -> StationDetailResponse:
 # -------------------------------------------------------------------------
 
 @router.post("/disruptions/simulate", response_model=DisruptionSimulateResponse)
-def simulate_disruption(req: DisruptionSimulateRequest) -> DisruptionSimulateResponse:
+async def simulate_disruption(req: DisruptionSimulateRequest) -> DisruptionSimulateResponse:
     """Executes the operational pipeline to simulate disruptions, check legality, and rank options."""
     query = req.query.strip()
     if not query:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Directive query cannot be empty.")
 
+    request_id = str(uuid.uuid4())
     llm_client = StubClient() if req.offline_mode else None
-    events = list(orchestrate(query, twin_manager.state, twin_manager.repo, client=llm_client))
+    events = await asyncio.to_thread(
+        lambda: list(
+            orchestrate(
+                query,
+                twin_manager.state,
+                twin_manager.repo,
+                client=llm_client,
+                request_id=request_id,
+            )
+        )
+    )
 
     abstain_event = next((p for s, p in events if s == "abstain"), None)
     clarify_event = next((p for s, p in events if s == "clarify"), None)
@@ -368,6 +393,7 @@ def simulate_disruption(req: DisruptionSimulateRequest) -> DisruptionSimulateRes
 
     if clarify_event:
         return DisruptionSimulateResponse(
+            request_id=request_id,
             status="clarification_needed",
             query=query,
             abstained=True,
@@ -378,6 +404,7 @@ def simulate_disruption(req: DisruptionSimulateRequest) -> DisruptionSimulateRes
 
     if abstain_event:
         return DisruptionSimulateResponse(
+            request_id=request_id,
             status="abstained",
             query=query,
             abstained=True,
@@ -471,6 +498,7 @@ def simulate_disruption(req: DisruptionSimulateRequest) -> DisruptionSimulateRes
     uncrewed_ids = [f.flight_id for f in impact.uncrewed_flights] if impact else []
 
     return DisruptionSimulateResponse(
+        request_id=request_id,
         status="success",
         query=query,
         abstained=False,
@@ -529,6 +557,7 @@ def finalize_recommendation(req: FinalizeRecommendationRequest) -> FinalizeRecom
         "description": f"Adopted {req.crew_id} for Pairing {req.pairing_id} (Cost: ₹{int(req.cost_inr):,})",
     })
 
+    request_id = str(uuid.uuid4())
     append_audit_event(
         "REASSIGNMENT_COMMITTED",
         {
@@ -537,9 +566,11 @@ def finalize_recommendation(req: FinalizeRecommendationRequest) -> FinalizeRecom
             "cost_inr": req.cost_inr,
             "overlay_id": reassign_ov_id,
         },
+        request_id=request_id,
     )
 
     return FinalizeRecommendationResponse(
+        request_id=request_id,
         success=True,
         message=f"Successfully finalized recommendation for {req.crew_id} on pairing {req.pairing_id}",
         finalized_overlay_id=reassign_ov_id,
@@ -734,7 +765,7 @@ def undo_overlay() -> TwinActionResponse:
 @router.post("/twin/reset", response_model=TwinActionResponse)
 def reset_baseline() -> TwinActionResponse:
     """Resets digital twin baseline by purging all overlays and re-materializing 06:00Z state."""
-    twin_manager.reset(force_rebuild=True)
+    twin_manager.reset(force_rebuild=False)
     now_str = datetime.now(timezone.utc).strftime("%H:%M:%SZ")
     return TwinActionResponse(
         success=True,
