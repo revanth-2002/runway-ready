@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import importlib
 import os
 from pathlib import Path
+import re
 import sys
 from typing import Any, Dict, List, Optional
 import uuid
@@ -233,52 +234,6 @@ st.markdown(
         border: 1px solid rgba(255, 255, 255, 0.12) !important;
         border-radius: 8px !important;
         overflow: hidden !important;
-    }
-
-    /* =========================================================
-       STATIC FIXED FOOTER: 100% Locked to Bottom of Window
-       ========================================================= */
-    div[data-testid="stForm"] {
-        position: fixed !important;
-        bottom: 0px !important;
-        left: 21rem !important;
-        right: 0px !important;
-        width: calc(100% - 21rem) !important;
-        height: auto !important;
-        min-height: 0 !important;
-        max-height: 80px !important;
-        z-index: 999999 !important;
-        background: #0f172a !important; /* solid opaque slate-900 */
-        border-top: 2px solid rgba(255, 255, 255, 0.18) !important;
-        box-shadow: 0 -10px 35px rgba(0, 0, 0, 0.6) !important;
-        padding: 10px 2.5rem !important;
-        margin: 0 !important;
-        box-sizing: border-box !important;
-    }
-
-    div[data-testid="stForm"] > div {
-        height: auto !important;
-        min-height: 0 !important;
-    }
-
-    /* Expand to full window width when sidebar is collapsed */
-    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) div[data-testid="stForm"] {
-        left: 0px !important;
-        width: 100% !important;
-    }
-
-    /* Responsive for mobile and tablet screens */
-    @media (max-width: 991px) {
-        div[data-testid="stForm"] {
-            left: 0px !important;
-            width: 100% !important;
-            padding: 10px 1.5rem 12px 1.5rem !important;
-        }
-    }
-
-    /* Ensure ample bottom clearance so the static footer never obscures content */
-    div[data-testid="stMainBlockContainer"] {
-        padding-bottom: 8.5rem !important;
     }
 
     /* Command prompt input field styling */
@@ -653,8 +608,12 @@ elif active_tab == "📍 Airport Hubs (BLR, DEL...)":
 # WORKSPACE 2: Disruption & Recovery Cockpit
 # -------------------------------------------------------------------------
 elif active_tab == "🚨 Disruption Cockpit":
-    def handle_finalize(opt):
-        evidence = st.session_state.get("pending_evidence", {})
+    if "cockpit_messages" not in st.session_state:
+        st.session_state.cockpit_messages = []
+
+    def handle_finalize(opt, evidence=None):
+        if evidence is None:
+            evidence = st.session_state.get("pending_evidence", {})
         disrupted_id = evidence.get("disrupted_crew_id", "C-1042")
         pairing_id = evidence.get("broken_pairing_id", "P-2291")
         flight_ids = evidence.get("flight_ids", [])
@@ -686,119 +645,296 @@ elif active_tab == "🚨 Disruption Cockpit":
             "disrupted_crew": disrupted_id,
         }
 
-        st.session_state.pending_options = None
-        st.session_state.pending_evidence = {}
-        st.session_state.pending_prose = None
-        st.session_state.pending_ledger = None
-        st.session_state.pending_twin_view = None
-        st.session_state.active_query = ""
-        st.session_state.selected_query = ""
-        st.session_state.directive_input_field = ""
+        conf_msg = (
+            f"🎉 **Operational Decision Finalized & Committed to Digital Twin!**\n\n"
+            f"• **Dispatched Crew:** `{opt.crew_id}` ({opt.candidate_type.replace('_', ' ').title()})\n"
+            f"• **Pairing Recovered:** `{pairing_id}` (Displaced: `{disrupted_id}`)\n"
+            f"• **Cost Incurred:** `₹{int(opt.cost.total_inr):,}` | **Status:** All legs restored to `ON_TIME`."
+        )
+        st.session_state.cockpit_messages.append({
+            "id": f"msg_assistant_fin_{len(st.session_state.cockpit_messages)}",
+            "role": "assistant",
+            "content": conf_msg,
+            "options": None,
+            "ledger": None,
+            "twin_view": None,
+            "action_chips": [
+                {"label": "🔍 Inspect Active Reserves (BLR)", "query": "Who is on reserve at BLR tomorrow?"},
+                {"label": "✈️ Review Aircraft Schedule", "query": "Which aircraft operates DX412 on 2026-09-15?"}
+            ],
+            "time": now_str,
+        })
         st.rerun()
 
-    # 0. Banner for finalized recommendation if set
-    if st.session_state.get("last_finalized"):
-        fin = st.session_state.last_finalized
-        st.success(
-            f"🎉 **Operational Decision Finalized & Committed to Digital Twin!**\n\n"
-            f"• **Dispatched Crew:** `{fin['candidate']}` ({fin['candidate_type']})\n"
-            f"• **Pairing Recovered:** `{fin['pairing_id']}` (Disrupted: `{fin['disrupted_crew']}`)\n"
-            f"• **Cost Incurred:** `₹{int(fin['cost_inr']):,}` | **Status:** All legs restored to `ON_TIME`."
-        )
-
-    # 1. Dynamic execution layout if new query entered
+    # 1. Process active query from docked prompt or action chips
     if active_query:
-        st.session_state.selected_query = ""  # Reset trigger
-        st.session_state.active_query = ""    # Reset trigger
-        logger.info("Executing user directive via API client", query=active_query)
+        now_ts = datetime.now(timezone.utc).strftime("%H:%M:%SZ")
+        curr_query = active_query.strip()
+        st.session_state.selected_query = ""
+        st.session_state.active_query = ""
 
-        st.markdown(f"**Disruption Directive:** `{active_query}`")
-        status_box = st.status("Executing operational pipeline via API...", expanded=True)
+        # Add user message
+        st.session_state.cockpit_messages.append({
+            "id": f"msg_user_{len(st.session_state.cockpit_messages)}",
+            "role": "user",
+            "content": curr_query,
+            "time": now_ts,
+        })
+
+        logger.info("Executing user directive via API client", query=curr_query)
 
         try:
             is_offline = st.session_state.get("offline_sandbox_mode", False)
-            sim_res = api_client.simulate_disruption(active_query, offline_mode=is_offline)
+            sim_res = api_client.simulate_disruption(curr_query, offline_mode=is_offline)
         except Exception as err:
-            status_box.update(label=f"API Error: {err}", state="error", expanded=False)
-            st.error(f"Error communicating with backend API: {err}")
             sim_res = None
+            st.session_state.cockpit_messages.append({
+                "id": f"msg_assistant_err_{len(st.session_state.cockpit_messages)}",
+                "role": "assistant",
+                "content": f"🛑 **API Connection Error:** {err}",
+                "options": None,
+                "ledger": None,
+                "twin_view": None,
+                "action_chips": [],
+                "time": now_ts,
+            })
 
         if sim_res:
             if sim_res.get("abstained"):
-                status_box.update(label=f"Abstention Triggered: {sim_res['abstain_reason']}", state="error", expanded=False)
-                st.error(f"🛑 **Operational Abstention ({sim_res['abstain_reason']})**\n\n{sim_res['abstain_message']}")
+                reason = sim_res.get("abstain_reason", "NOTICE")
+                msg = sim_res.get("abstain_message", "Operational parameters need clarification.")
+                action_chips = [
+                    {"label": "🔍 Available Reserves (BLR)", "query": "Who is on reserve at BLR tomorrow?"},
+                    {"label": "✈️ Flight Schedule (DEL)", "query": "Which flights depart DEL on 2026-09-15?"},
+                ]
+                st.session_state.cockpit_messages.append({
+                    "id": f"msg_assistant_abs_{len(st.session_state.cockpit_messages)}",
+                    "role": "assistant",
+                    "content": f"⚠️ **Operational Notice ({reason}):**\n\n{msg}",
+                    "options": None,
+                    "ledger": None,
+                    "twin_view": None,
+                    "action_chips": action_chips,
+                    "time": now_ts,
+                })
             else:
-                status_box.update(label="Operational Decision Ready", state="complete", expanded=False)
-
                 options = sim_res.get("parsed_options", [])
                 ledger = sim_res.get("parsed_ledger")
                 twin_view = sim_res.get("parsed_twin_view")
                 prose = sim_res.get("prose_summary")
-
-                st.session_state.pending_options = options
-                st.session_state.pending_ledger = ledger
-                st.session_state.pending_twin_view = twin_view
-                st.session_state.pending_prose = prose
-                st.session_state.pending_evidence = {
-                    "disrupted_crew_id": sim_res.get("disrupted_crew_id"),
+                disrupted_crew_id = sim_res.get("disrupted_crew_id")
+                evidence = {
+                    "disrupted_crew_id": disrupted_crew_id,
                     "broken_pairing_id": sim_res.get("broken_pairing_id"),
                     "flight_ids": sim_res.get("uncrewed_flight_ids", []),
                 }
 
-                col_left, col_right = st.columns([3, 2], gap="large")
-                with col_left:
-                    if prose:
-                        st.markdown(prose)
-                    if options:
-                        render_option_cards(options, col_left, on_finalize=handle_finalize, key_prefix="live_opt")
-                    if ledger:
-                        render_ledger_table(ledger, col_left)
+                # Derive intelligent follow-up chips based on user query intent
+                q_low = curr_query.lower()
+                flight_m = re.search(r"\b(DX\d{3,4})\b", curr_query, re.IGNORECASE)
+                target_fid = flight_m.group(1).upper() if flight_m else "DX412"
 
-                with col_right:
-                    if twin_view:
-                        render_gantt_diff(twin_view, col_right, key_prefix="live_gantt_diff")
+                # Determine intent type: what-if check vs already showing options
+                is_whatif_check = (
+                    "move" in q_low or "put" in q_low or "assign" in q_low
+                    or "duty limit" in q_low or "breach" in q_low
+                    or "can " in q_low
+                ) and not ("recovery options" in q_low or "produce recovery" in q_low)
 
-    # 2. Retain evaluated options across re-renders
-    elif st.session_state.get("pending_options"):
-        options = st.session_state.pending_options
-        ledger = st.session_state.pending_ledger
-        twin_view = st.session_state.pending_twin_view
-        prose = st.session_state.pending_prose
+                action_chips = []
+                if is_whatif_check:
+                    # Encode the displaced crew from the API response into the chip query
+                    # so runner.py can look them up without hallucinating a sick disruption
+                    displaced_from_evidence = disrupted_crew_id  # from prior what-if eval_res
+                    displaced_tag = f" displaced:{displaced_from_evidence}" if displaced_from_evidence else ""
+                    action_chips = [
+                        {"label": f"⚡ Generate Recovery Options for {target_fid}", "query": f"produce recovery options for {target_fid}{displaced_tag}"},
+                        {"label": f"👥 Who is assigned to flight {target_fid}?", "query": f"Which crews are affected if I replace the captain on {target_fid}?"},
+                        {"label": "📋 Check Reserve Availability", "query": f"Who is on reserve at BLR tomorrow?"},
+                    ]
+                elif options:
+                    # Already showing recovery options — no need for another recovery chip
+                    action_chips = [
+                        {"label": "🔍 Check Standby Strength (BLR)", "query": "Who is on reserve at BLR tomorrow?"},
+                        {"label": "✈️ Review Aircraft Rotations", "query": f"Which aircraft operates {target_fid} on 2026-09-15?"},
+                    ]
+                else:
+                    action_chips = [
+                        {"label": "⚖️ Check High-Duty Crew", "query": "Which crew have 45 or more duty hours in the 7 days?"},
+                        {"label": "🔍 Active Reserves at BLR", "query": "Who is on reserve at BLR tomorrow?"},
+                    ]
 
-        col_left, col_right = st.columns([3, 2], gap="large")
-        with col_left:
-            if prose:
-                st.markdown(prose)
-            if options:
-                render_option_cards(options, col_left, on_finalize=handle_finalize, key_prefix="retained_opt")
-            if ledger:
-                render_ledger_table(ledger, col_left)
+                st.session_state.cockpit_messages.append({
+                    "id": f"msg_assistant_{len(st.session_state.cockpit_messages)}",
+                    "role": "assistant",
+                    "content": prose,
+                    "options": options,
+                    # Options are hidden by default; user must click to expand them
+                    "show_options": False if is_whatif_check else bool(options),
+                    "ledger": ledger,
+                    "twin_view": twin_view,
+                    "evidence": evidence,
+                    "action_chips": action_chips,
+                    "time": now_ts,
+                })
+                if twin_view:
+                    st.session_state.last_twin_view = twin_view
 
-        with col_right:
-            if twin_view:
-                render_gantt_diff(twin_view, col_right, key_prefix="retained_gantt_diff")
+        st.rerun()
 
-    # 3. Baseline idle state
-    else:
-        col_left, col_right = st.columns([3, 2], gap="large")
-        with col_left:
+    # 2. Header & Action Controls
+    head_c1, head_c2 = st.columns([4, 1.2])
+    with head_c1:
+        st.subheader("🚨 Disruption Cockpit — Autonomous Operations AI Co-Pilot")
+        st.caption("Real-time conversational intelligence for airline operations control, DGCA CAR Sec 7 compliance, and minimal-cost disruption repair.")
+    with head_c2:
+        if st.button("🔄 Clear Chat", use_container_width=True):
+            st.session_state.cockpit_messages = []
+            st.session_state.last_twin_view = None
+            st.rerun()
+
+    # 3. Main Workspace — Full-Width Conversation Stream
+    with st.container():
+        messages = st.session_state.get("cockpit_messages", [])
+        if not messages:
             st.info(
                 "👋 **Welcome, Airline Operations Controller.**\n\n"
-                "Select an operational scenario on the left or enter a natural language directive below to initiate simulation.\n\n"
-                "• **Decoupled REST API:** Queries routed cleanly to structured `/api/v1/...` endpoints.\n"
-                "• **Live Disruption Simulation:** Evaluates pairing breakdowns, passenger impacts, and minimal repair levers.\n"
-                "• **Deterministic Legality Ledgers:** DGCA CAR Section 7 compliance verification with signed arithmetic margins.\n"
-                "• **Anti-Hallucination Guard:** Mathematical slot substitution guaranteed free of invented IDs or figures.\n"
-                "• **State Memory & Finalization:** Accept recovery options to update the digital twin and hold changes in memory."
+                "I am your autonomous Operations Co-Pilot. You can query duty legalities, evaluate what-if crew moves, simulate disruptions, or assess mass station cancellations.\n\n"
+                "**💡 Suggested Operational Directives:**"
             )
-        with col_right:
-            # Materialize baseline view for idle state
-            try:
-                from advisor.api.routes import twin_manager
-                idle_view = twin_manager.state.materialize()
-                render_gantt_diff(idle_view, col_right, key_prefix="idle_base_gantt")
-            except Exception:
-                st.caption("Fleet timeline ready for scenario injection.")
+            q_cols = st.columns(2)
+            with q_cols[0]:
+                if st.button("🔴 Capt Nair Sick (DX412)", use_container_width=True, key="quick_cpt_nair"):
+                    _trigger_scenario("Captain A. Nair is sick for flight DX412. What is the impact and who is the recommended replacement?")
+                    st.rerun()
+                if st.button("⚖️ What-If: Move FO C-2087 to DX412", use_container_width=True, key="quick_c2087_whatif"):
+                    _trigger_scenario("If I move FO C-2087 onto DX412, does anyone breach a duty limit?")
+                    st.rerun()
+            with q_cols[1]:
+                if st.button("🔍 Check Standby Strength (BLR)", use_container_width=True, key="quick_blr_reserves"):
+                    _trigger_scenario("Who is on reserve at BLR tomorrow?")
+                    st.rerun()
+                if st.button("👥 Check DX412 Crew Roster", use_container_width=True, key="quick_dx412_crew"):
+                    _trigger_scenario("Which crews are affected if I replace the captain on DX412?")
+                    st.rerun()
+        else:
+            for msg_idx, msg in enumerate(messages):
+                if msg["role"] == "user":
+                    st.markdown(
+                        f"""
+                        <div style="background: rgba(30, 41, 59, 0.7); border-left: 4px solid #38bdf8; padding: 12px 16px; border-radius: 6px; margin-bottom: 12px;">
+                            <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px; font-weight: 600;">👨‍✈️ OPERATIONS CONTROLLER &bull; {msg.get('time', '')}</div>
+                            <div style="font-size: 0.95rem; color: #f8fafc; font-weight: 500;">{msg['content']}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f"""
+                        <div style="background: rgba(15, 23, 42, 0.9); border-left: 4px solid #10b981; padding: 14px 18px; border-radius: 6px; margin-bottom: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+                            <div style="font-size: 0.75rem; color: #34d399; margin-bottom: 6px; font-weight: 700; letter-spacing: 0.5px;">🤖 AI OPERATIONS ADVISOR &bull; {msg.get('time', '')}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    if msg.get("content"):
+                        st.markdown(msg["content"])
+
+                    # Recovery option cards: only shown when user explicitly opted in
+                    msg_options = msg.get("options")
+                    show_opts = msg.get("show_options", bool(msg_options))
+                    if msg_options:
+                        if show_opts:
+                            render_option_cards(msg_options, None, on_finalize=lambda opt, ev=msg.get("evidence"): handle_finalize(opt, ev), key_prefix=f"msg_opt_{msg_idx}")
+                        else:
+                            with st.expander(f"📋 View {len(msg_options)} Recovery Options (click to expand)", expanded=False):
+                                render_option_cards(msg_options, None, on_finalize=lambda opt, ev=msg.get("evidence"): handle_finalize(opt, ev), key_prefix=f"msg_opt_exp_{msg_idx}")
+
+                    if msg.get("ledger"):
+                        render_ledger_table(msg["ledger"], None)
+
+
+                    # Render action chips
+                    chips = msg.get("action_chips", [])
+                    if chips:
+                        st.markdown("<div style='font-size: 0.8rem; font-weight: 600; color: #94a3b8; margin-top: 8px; margin-bottom: 4px;'>💡 Suggested Follow-up Actions:</div>", unsafe_allow_html=True)
+                        chip_cols = st.columns(len(chips))
+                        for c_idx, chip in enumerate(chips):
+                            with chip_cols[c_idx]:
+                                if st.button(chip["label"], key=f"chip_{msg_idx}_{c_idx}", use_container_width=True):
+                                    _trigger_scenario(chip["query"])
+                                    st.rerun()
+
+
+    # -------------------------------------------------------------------------
+    # DOCKED OPERATIONAL DIRECTIVE PROMPT (Exclusively in Disruption Cockpit)
+    # -------------------------------------------------------------------------
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stForm"] {
+            position: fixed !important;
+            bottom: 0px !important;
+            left: 21rem !important;
+            right: 0px !important;
+            width: calc(100% - 21rem) !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: 80px !important;
+            z-index: 999999 !important;
+            background: #0f172a !important; /* solid opaque slate-900 */
+            border-top: 2px solid rgba(255, 255, 255, 0.18) !important;
+            box-shadow: 0 -10px 35px rgba(0, 0, 0, 0.6) !important;
+            padding: 10px 2.5rem !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
+        }
+
+        div[data-testid="stForm"] > div {
+            height: auto !important;
+            min-height: 0 !important;
+        }
+
+        [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) div[data-testid="stForm"] {
+            left: 0px !important;
+            width: 100% !important;
+        }
+
+        @media (max-width: 991px) {
+            div[data-testid="stForm"] {
+                left: 0px !important;
+                width: 100% !important;
+                padding: 10px 1.5rem 12px 1.5rem !important;
+            }
+        }
+
+        div[data-testid="stMainBlockContainer"] {
+            padding-bottom: 8.5rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.container():
+        with st.form("docked_directive_form", clear_on_submit=False, border=False):
+            col_in, col_btn = st.columns([5, 1.2], gap="small")
+            with col_in:
+                typed_directive = st.text_input(
+                    "Operational Directive",
+                    value=st.session_state.get("directive_input_field", ""),
+                    placeholder="Type disruption directive (e.g. Captain A. Nair is sick for flight DX412 tomorrow...)",
+                    label_visibility="collapsed",
+                    key="directive_input_widget",
+                )
+            with col_btn:
+                submit_clicked = st.form_submit_button("🚀 Run Directive", use_container_width=True, type="primary")
+
+        if submit_clicked and typed_directive.strip():
+            st.session_state.active_query = typed_directive.strip()
+            st.session_state.directive_input_field = typed_directive.strip()
+            st.rerun()
 
 
 # -------------------------------------------------------------------------
@@ -820,27 +956,3 @@ elif active_tab == "✈️ Fleet & Schedule":
     from advisor.api.routes import twin_manager
     current_twin_view = twin_manager.state.materialize()
     render_gantt_diff(current_twin_view, key_prefix="fleet_workspace_gantt")
-
-
-# =========================================================================
-# DOCKED OPERATIONAL DIRECTIVE PROMPT (Bottom of Window across all tabs)
-# =========================================================================
-with st.container():
-    with st.form("docked_directive_form", clear_on_submit=False, border=False):
-        col_in, col_btn = st.columns([5, 1.2], gap="small")
-        with col_in:
-            typed_directive = st.text_input(
-                "Operational Directive",
-                value=st.session_state.get("directive_input_field", ""),
-                placeholder="Type disruption directive (e.g. Captain A. Nair is sick for flight DX412 tomorrow...)",
-                label_visibility="collapsed",
-                key="directive_input_widget",
-            )
-        with col_btn:
-            submit_clicked = st.form_submit_button("🚀 Run Directive", use_container_width=True, type="primary")
-
-    if submit_clicked and typed_directive.strip():
-        st.session_state.active_query = typed_directive.strip()
-        st.session_state.directive_input_field = typed_directive.strip()
-        st.session_state.nav_target = "🚨 Disruption Cockpit"
-        st.rerun()

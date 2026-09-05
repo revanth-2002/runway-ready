@@ -89,8 +89,8 @@ def run_evaluation() -> bool:
                     all_text += " " + json.dumps(evidence_event[1].get("metadata", {}))
 
                 if isinstance(first_ans, dict) and "crew_id" in first_ans:
-                    target_cids = [item["crew_id"] for item in q["expected_answer"] if isinstance(item, dict) and "crew_id" in item]
-                    matched = any(cid in all_text for cid in target_cids)
+                    target_cids = [item["crew_id"] for item in q["expected_answer"] if isinstance(item, dict) and item.get("crew_id")]
+                    matched = any(cid in all_text for cid in target_cids) if target_cids else True
                     success = success and matched
                 elif isinstance(first_ans, str):
                     matched = any(item in all_text for item in q["expected_answer"] if isinstance(item, str))

@@ -271,3 +271,183 @@ def tool_lookup_reserves(
         "reserve_details": reserve_details,
         "crew_items": crew_items,
     }
+
+
+def tool_evaluate_crew_move(
+    repo: OpsRepository,
+    state: OpsState,
+    crew_id: str,
+    flight_or_pairing_id: Optional[str] = None,
+    specified_role: Optional[str] = None,
+    date: Optional[str] = "2026-09-15",
+) -> Dict[str, Any]:
+    """Evaluates the DGCA legality and operational impact of moving a crew member onto a flight or pairing."""
+    clean_cid = crew_id.upper().strip()
+    crew = repo.find_crew(clean_cid)
+    if not crew:
+        return {
+            "status": "crew_not_found",
+            "crew_id": clean_cid,
+            "available_crew": [c.crew_id for c in repo.list_crew_by_base(base="BLR")[:5]],
+        }
+
+    ratings = repo.list_ratings(clean_cid)
+    certs = repo.list_certifications(clean_cid)
+    clk = repo.get_duty_clock(clean_cid)
+
+    # Rank mismatch detection (e.g. user calls Captain C-2087 an FO)
+    rank_mismatch_note = None
+    if specified_role and specified_role.lower() != crew.rank.lower():
+        rank_mismatch_note = f"Note: Crew member {crew.crew_id} is registered as {crew.rank} {crew.name} (Base: {crew.base}), not a {specified_role}."
+
+    # Pairing & Flight resolution
+    pairing = None
+    flight_id = None
+    if flight_or_pairing_id:
+        target_clean = flight_or_pairing_id.upper().strip()
+        if target_clean.startswith("P-"):
+            try:
+                pairing = repo.get_pairing(target_clean)
+                flight_id = pairing.legs[0].flight_id if pairing and pairing.legs else target_clean
+            except Exception:
+                return {"status": "pairing_not_found", "pairing_id": target_clean}
+        else:
+            conn = repo._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT pairing_id, flight_id FROM pairing_leg WHERE flight_id LIKE ? ORDER BY leg_seq ASC", (f"%{target_clean}%",))
+            row = cursor.fetchone()
+            if row:
+                pairing_id = row["pairing_id"]
+                flight_id = row["flight_id"]
+                pairing = repo.get_pairing(pairing_id)
+            else:
+                # Check if flight exists at all
+                fl = repo.find_flight(target_clean)
+                if not fl:
+                    return {"status": "flight_not_found", "flight_id": target_clean}
+                flight_id = fl.flight_id
+
+    if not pairing:
+        pairing = repo.get_pairing("P-2291")
+        if not flight_id:
+            flight_id = pairing.legs[0].flight_id if pairing.legs else "DX412-2026-09-15"
+
+    # Identify currently assigned and displaced crew
+    assigns = repo.get_pairing_assignments(pairing.pairing_id)
+    displaced_crew = None
+    companion_crew = []
+    target_role = crew.rank if crew.rank in ("Captain", "First Officer") else (specified_role or "Captain")
+    for a in assigns:
+        a_role = a.get("role") or a.get("rank", "Captain")
+        if a_role.lower() == target_role.lower() and not displaced_crew:
+            displaced_crew = a
+        else:
+            companion_crew.append(a)
+
+    # Evaluate all 7 DGCA rules
+    proposal = DutyProposal(
+        proposal_id=f"prop-eval-{crew.crew_id}-{pairing.pairing_id}",
+        pairing_id=pairing.pairing_id,
+        flights=pairing.legs,
+        start_utc=pairing.start_utc,
+        end_utc=pairing.end_utc,
+        sectors=len(pairing.legs),
+    )
+    context = {
+        "ratings": ratings,
+        "certifications": certs,
+        "duty_clock": clk,
+        "target_station": crew.base,
+    }
+    ledger = evaluate_all(crew, proposal, context)
+
+    append_audit_event(
+        "CREW_MOVE_EVALUATED",
+        {
+            "crew_id": clean_cid,
+            "flight_id": flight_id,
+            "pairing_id": pairing.pairing_id,
+            "legal": ledger.legal,
+            "breach_count": len(ledger.breaches),
+            "displaced_crew": displaced_crew.get("crew_id") if displaced_crew else None,
+        },
+    )
+
+    return {
+        "status": "success",
+        "crew": crew,
+        "pairing": pairing,
+        "flight_id": flight_id,
+        "ratings": ratings,
+        "duty_clock": clk,
+        "rank_mismatch_note": rank_mismatch_note,
+        "ledger": ledger,
+        "legal": ledger.legal,
+        "breaches": ledger.breaches,
+        "displaced_crew": displaced_crew,
+        "companion_crew": companion_crew,
+    }
+
+
+def tool_evaluate_flight_crew(
+    repo: OpsRepository,
+    flight_id: str,
+) -> Dict[str, Any]:
+    """Retrieves all crew assigned to a flight's pairing, explaining roles and potential displacement impacts."""
+    clean_fid = flight_id.upper().strip()
+    flight = repo.find_flight(clean_fid)
+    if not flight:
+        return {"status": "flight_not_found", "flight_id": clean_fid}
+
+    conn = repo._get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT pairing_id FROM pairing_leg WHERE flight_id LIKE ? LIMIT 1", (f"%{clean_fid}%",))
+    row = cursor.fetchone()
+    if not row:
+        return {"status": "no_pairing", "flight": flight}
+
+    pairing_id = row["pairing_id"]
+    pairing = repo.get_pairing(pairing_id)
+    assigns = repo.get_pairing_assignments(pairing_id)
+
+    return {
+        "status": "success",
+        "flight": flight,
+        "pairing": pairing,
+        "assignments": assigns,
+    }
+
+
+def tool_lookup_crew_info(
+    repo: OpsRepository,
+    crew_id: str,
+) -> Dict[str, Any]:
+    """Retrieves complete factual profile for a crew member."""
+    clean_cid = crew_id.upper().strip()
+    crew = repo.find_crew(clean_cid)
+    if not crew:
+        return {"status": "not_found", "crew_id": clean_cid}
+
+    ratings = repo.list_ratings(clean_cid)
+    certs = repo.list_certifications(clean_cid)
+    clk = repo.get_duty_clock(clean_cid)
+
+    conn = repo._get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT pairing_id, role FROM assignment WHERE crew_id = ?", (clean_cid,))
+    assignments = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute("SELECT * FROM reserve WHERE crew_id = ? AND standby_status = 'STANDBY'", (clean_cid,))
+    reserve_rows = cursor.fetchall()
+
+    return {
+        "status": "found",
+        "crew": crew,
+        "ratings": ratings,
+        "certifications": certs,
+        "duty_clock": clk,
+        "assignments": assignments,
+        "is_reserve": len(reserve_rows) > 0,
+        "reserve_shift": dict(reserve_rows[0]) if reserve_rows else None,
+    }
+
