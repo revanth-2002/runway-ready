@@ -13,6 +13,12 @@ import httpx
 
 from advisor.audit.logger import StructuredLogger
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 logger = StructuredLogger("advisor.voice.sarvam")
 
 SARVAM_STT_URL = "https://api.sarvam.ai/speech-to-text"
@@ -32,11 +38,23 @@ class SarvamVoiceClient:
     """Client for Sarvam AI Speech-to-Text and Text-to-Speech services."""
 
     def __init__(self, api_key: Optional[str] = None):
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=False)
+        except ImportError:
+            pass
         self._api_key = api_key or os.environ.get("SARVAM_API_KEY")
 
     @property
     def api_key(self) -> Optional[str]:
-        return self._api_key or os.environ.get("SARVAM_API_KEY")
+        if self._api_key:
+            return self._api_key
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=False)
+        except ImportError:
+            pass
+        return os.environ.get("SARVAM_API_KEY")
 
     def set_api_key(self, key: str) -> None:
         self._api_key = key.strip()

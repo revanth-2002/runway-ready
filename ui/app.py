@@ -18,6 +18,12 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 import pandas as pd
 import streamlit as st
 
@@ -45,7 +51,7 @@ from ui.components.cards import render_option_cards
 from ui.components.gantt import render_gantt_diff
 from ui.components.ledger import render_ledger_table
 from ui.components.reserves import render_reserve_board
-from ui.components.voice_agent import render_voice_agent_cockpit, synthesize_and_play_response
+from ui.components.voice_agent import render_docked_voice_agent, render_voice_agent_cockpit, synthesize_and_play_response
 
 logger = StructuredLogger("ui.app")
 
@@ -713,7 +719,6 @@ WORKSPACE_TABS = [
     "🌐 Network Overview",
     "📍 Airport Hubs (BLR, DEL...)",
     "🚨 Disruption Cockpit",
-    "🎙️ Voice Agent (Sarvam AI)",
     "👥 Standby Roster",
     "✈️ Fleet & Schedule",
 ]
@@ -1154,7 +1159,8 @@ elif active_tab == "🚨 Disruption Cockpit":
     st.markdown(
         """
         <style>
-        div[data-testid="stForm"] {
+        div[class*="st-key-docked_directive_container"],
+        div.docked-directive-bar {
             position: fixed !important;
             bottom: 0px !important;
             left: 21rem !important;
@@ -1163,6 +1169,7 @@ elif active_tab == "🚨 Disruption Cockpit":
             height: auto !important;
             min-height: 0 !important;
             max-height: 80px !important;
+            overflow: visible !important;
             z-index: 999999 !important;
             background: #0f172a !important; /* solid opaque slate-900 */
             border-top: 2px solid rgba(255, 255, 255, 0.18) !important;
@@ -1172,18 +1179,52 @@ elif active_tab == "🚨 Disruption Cockpit":
             box-sizing: border-box !important;
         }
 
-        div[data-testid="stForm"] > div {
+        div[class*="st-key-docked_directive_container"] div[data-testid="stPopover"],
+        div.docked-directive-bar div[data-testid="stPopover"] {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+
+        div[class*="st-key-docked_directive_container"] div[data-testid="stPopover"] > button,
+        div.docked-directive-bar div[data-testid="stPopover"] > button {
+            background: #1e293b !important;
+            border: 1px solid rgba(56, 189, 248, 0.5) !important;
+            border-radius: 8px !important;
+            color: #38bdf8 !important;
+            font-size: 1.25rem !important;
+            padding: 6px 12px !important;
+            height: 42px !important;
+            width: 100% !important;
+            transition: all 0.2s ease-in-out !important;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2) !important;
+        }
+
+        div[class*="st-key-docked_directive_container"] div[data-testid="stPopover"] > button:hover,
+        div.docked-directive-bar div[data-testid="stPopover"] > button:hover {
+            background: #0284c7 !important;
+            color: #ffffff !important;
+            border-color: #38bdf8 !important;
+            box-shadow: 0 0 16px rgba(56, 189, 248, 0.6) !important;
+            transform: scale(1.02);
+        }
+
+        div[class*="st-key-docked_directive_container"] > div,
+        div.docked-directive-bar > div {
             height: auto !important;
             min-height: 0 !important;
         }
 
-        [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) div[data-testid="stForm"] {
+        [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) div[class*="st-key-docked_directive_container"],
+        [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) div.docked-directive-bar {
             left: 0px !important;
             width: 100% !important;
         }
 
         @media (max-width: 991px) {
-            div[data-testid="stForm"] {
+            div[class*="st-key-docked_directive_container"],
+            div.docked-directive-bar {
                 left: 0px !important;
                 width: 100% !important;
                 padding: 10px 1.5rem 12px 1.5rem !important;
@@ -1198,36 +1239,38 @@ elif active_tab == "🚨 Disruption Cockpit":
         unsafe_allow_html=True,
     )
 
-    with st.container():
-        with st.form("docked_directive_form", clear_on_submit=False, border=False):
-            col_in, col_btn = st.columns([5, 1.2], gap="small")
-            with col_in:
-                typed_directive = st.text_input(
-                    "Operational Directive",
-                    value=st.session_state.get("directive_input_field", ""),
-                    placeholder="Type disruption directive (e.g. Captain A. Nair is sick for flight DX412 tomorrow...)",
-                    label_visibility="collapsed",
-                    key="directive_input_widget",
-                )
-            with col_btn:
-                submit_clicked = st.form_submit_button("🚀 Run Directive", use_container_width=True, type="primary")
+    def on_text_directive_enter():
+        val = st.session_state.get("directive_input_widget", "").strip()
+        if val:
+            st.session_state.active_query = val
+            st.session_state.directive_input_field = val
 
-        if submit_clicked and typed_directive.strip():
-            st.session_state.active_query = typed_directive.strip()
-            st.session_state.directive_input_field = typed_directive.strip()
-            st.rerun()
+    with st.container(key="docked_directive_container"):
+        col_in, col_mic, col_btn = st.columns([5.2, 0.6, 1.4], gap="small")
+        with col_in:
+            typed_directive = st.text_input(
+                "Operational Directive",
+                value=st.session_state.get("directive_input_field", ""),
+                placeholder="Type disruption directive (e.g. Captain A. Nair is sick for flight DX412 tomorrow...)",
+                label_visibility="collapsed",
+                key="directive_input_widget",
+                on_change=on_text_directive_enter,
+            )
+        with col_mic:
+            def handle_voice_directive_ready(voice_text: str):
+                st.session_state.active_query = voice_text
+                st.session_state.directive_input_field = voice_text
+                st.rerun()
 
+            render_docked_voice_agent(on_directive_ready=handle_voice_directive_ready)
 
-# -------------------------------------------------------------------------
-# WORKSPACE: Sarvam AI Voice Agent
-# -------------------------------------------------------------------------
-elif active_tab == "🎙️ Voice Agent (Sarvam AI)":
-    def handle_voice_directive_submit(query_text: str):
-        _trigger_scenario(query_text)
-        st.session_state.active_tab = "🚨 Disruption Cockpit"
+        with col_btn:
+            submit_clicked = st.button("🚀 Run Directive", use_container_width=True, type="primary", key="btn_run_docked_directive")
+
+    if submit_clicked and typed_directive.strip():
+        st.session_state.active_query = typed_directive.strip()
+        st.session_state.directive_input_field = typed_directive.strip()
         st.rerun()
-
-    render_voice_agent_cockpit(on_query_submit=handle_voice_directive_submit)
 
 
 # -------------------------------------------------------------------------
