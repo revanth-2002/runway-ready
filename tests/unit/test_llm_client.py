@@ -116,7 +116,7 @@ def test_render_slotted_prose_rate_limit_notice():
 
     prose = render_slotted_prose(mock_impact, mock_ledger, [], client=failing_client)
     assert "You have hit the limit, please try again after some time." in prose
-    assert "Captain {{impact.crew_id}}" in prose
+    assert "{{impact.crew_rank}} {{impact.crew_id}}" in prose
 
 
 def test_render_slotted_prose_non_429_no_warning():
@@ -140,4 +140,4 @@ def test_render_slotted_prose_non_429_no_warning():
 
     prose = render_slotted_prose(mock_impact, mock_ledger, [], client=failing_client)
     assert "You have hit the limit" not in prose
-    assert "Captain {{impact.crew_id}}" in prose
+    assert "{{impact.crew_rank}} {{impact.crew_id}}" in prose

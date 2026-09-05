@@ -27,7 +27,10 @@ from advisor.api.schemas import (
     ReserveListResponse,
     StationDetailResponse,
     StationFlightMovement,
+    ChatResetResponse,
+    ChatStateResponse,
     StationSummary,
+    SuggestionSchema,
     TailRotation,
     TwinActionResponse,
     TwinStateResponse,
@@ -38,6 +41,7 @@ from advisor.audit.logger import StructuredLogger, append_audit_event
 from advisor.data.repository import OpsRepository, DEFAULT_DB_PATH
 from advisor.domain.state import OpsState, Overlay
 from advisor.llm.client import get_active_llm_info, StubClient
+from advisor.orchestrator.chat_state import ConversationState
 from advisor.orchestrator.runner import orchestrate
 from advisor.twin.warm import warm_operational_digital_twin, DEFAULT_STATIONS
 
@@ -59,6 +63,9 @@ class TwinManager:
         self.state: OpsState = self.warmed["state"]
         self.repo: OpsRepository = self.warmed["repo"]
         self.action_history: List[Dict[str, Any]] = []
+        # Conversational memory. Deliberately separate from the twin: clearing the
+        # chat forgets the discussion, it does not revert committed reassignments.
+        self.chat_state = ConversationState()
 
     def reset(self, force_rebuild: bool = False):
         if hasattr(self, "repo") and getattr(self.repo, "_conn", None):
@@ -71,11 +78,24 @@ class TwinManager:
         self.state = self.warmed["state"]
         self.repo = self.warmed["repo"]
         now_str = datetime.now(timezone.utc).strftime("%H:%M:%SZ")
+        self.chat_state.clear()
         self.action_history.insert(0, {
             "timestamp": now_str,
             "action": "RESET_BASELINE",
             "description": "Purged all overlays and re-materialized clean 06:00Z baseline",
         })
+
+    def clear_chat(self) -> int:
+        """Forgets the conversation. Committed twin overlays are left untouched."""
+        cleared = len(self.chat_state.turns)
+        self.chat_state.clear()
+        now_str = datetime.now(timezone.utc).strftime("%H:%M:%SZ")
+        self.action_history.insert(0, {
+            "timestamp": now_str,
+            "action": "CLEAR_CHAT",
+            "description": f"Cleared conversation memory ({cleared} recorded action(s))",
+        })
+        return cleared
 
     def undo(self) -> Optional[Overlay]:
         if not self.state.overlays:
@@ -381,6 +401,7 @@ async def simulate_disruption(req: DisruptionSimulateRequest) -> DisruptionSimul
                 twin_manager.repo,
                 client=llm_client,
                 request_id=request_id,
+                chat_state=twin_manager.chat_state,
             )
         )
     )
@@ -390,6 +411,8 @@ async def simulate_disruption(req: DisruptionSimulateRequest) -> DisruptionSimul
     evidence_payload = next((p for s, p in events if s == "evidence"), {})
     options_payload = next((p for s, p in events if s == "options"), None)
     prose_payload = next((p for s, p in events if s == "prose"), None)
+    suggestions_payload = next((p for s, p in events if s == "suggestions"), [])
+    recommendation_payload = next((p for s, p in events if s == "recommendation"), None)
 
     if clarify_event:
         return DisruptionSimulateResponse(
@@ -509,6 +532,8 @@ async def simulate_disruption(req: DisruptionSimulateRequest) -> DisruptionSimul
         ledger=ledger_dict,
         twin_view=twin_view_dict,
         prose_summary=prose_payload,
+        recommendation=recommendation_payload,
+        suggestions=[SuggestionSchema(**s) for s in suggestions_payload],
     )
 
 
@@ -773,4 +798,29 @@ def reset_baseline() -> TwinActionResponse:
         message="Digital twin baseline successfully re-materialized from repository.",
         active_overlays_count=0,
         timestamp=now_str,
+    )
+
+
+# -------------------------------------------------------------------------
+# Conversation State
+# -------------------------------------------------------------------------
+
+@router.get("/chat/state", response_model=ChatStateResponse)
+def get_chat_state() -> ChatStateResponse:
+    """Returns what this conversation has already done."""
+    return ChatStateResponse(**twin_manager.chat_state.to_dict())
+
+
+@router.post("/chat/reset", response_model=ChatResetResponse)
+def reset_chat() -> ChatResetResponse:
+    """Clears conversational memory. Committed digital twin overlays are preserved."""
+    cleared = twin_manager.clear_chat()
+    logger.info("Conversation state cleared via API", cleared_actions=cleared)
+    return ChatResetResponse(
+        status="cleared",
+        cleared_actions=cleared,
+        message=(
+            f"Cleared {cleared} recorded action(s). Digital twin overlays are unchanged - "
+            "use /api/v1/twin/reset to revert committed reassignments."
+        ),
     )

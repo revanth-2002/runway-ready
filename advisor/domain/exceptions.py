@@ -42,3 +42,22 @@ class SlotSubstitutionError(OpsAdvisorError):
     """Raised when LLM-rendered prose contains unknown {{slot}} tokens."""
 
     pass
+
+
+class LLMUnavailableError(OpsAdvisorError):
+    """Raised when the external LLM provider cannot serve a request.
+
+    Callers catch this and degrade to their deterministic path. The degradation is
+    logged, not narrated to the controller.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        provider: str = "gemini",
+        is_rate_limit: bool = False,
+        trace_id: Optional[str] = None,
+    ):
+        super().__init__(message, trace_id)
+        self.provider = provider
+        self.is_rate_limit = is_rate_limit

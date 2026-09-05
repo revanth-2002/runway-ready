@@ -99,6 +99,13 @@ class CandidateOptionSchema(BaseModel):
     source_rows: List[str] = Field(default_factory=list)
 
 
+class SuggestionSchema(BaseModel):
+    """A question-aware follow-up action the controller can execute next."""
+
+    label: str
+    query: str
+
+
 class DisruptionSimulateResponse(BaseModel):
     request_id: Optional[str] = None
     status: str
@@ -113,6 +120,9 @@ class DisruptionSimulateResponse(BaseModel):
     ledger: Optional[Dict[str, Any]] = None
     twin_view: Optional[Dict[str, Any]] = None
     prose_summary: Optional[str] = None
+    # Rendered after the option cards and ledger, so "see below" actually points below.
+    recommendation: Optional[str] = None
+    suggestions: List[SuggestionSchema] = Field(default_factory=list)
 
 
 class FinalizeRecommendationRequest(BaseModel):
@@ -286,3 +296,24 @@ class StationDetailResponse(BaseModel):
     arrivals: List[StationFlightMovement]
     standby_reserves_count: int
 
+
+
+class ChatStateResponse(BaseModel):
+    """Conversational memory: what this chat has asked, decided and recommended."""
+
+    turn_count: int = 0
+    turns: List[Dict[str, Any]] = Field(default_factory=list)
+    # Legacy alias for `turns`, retained for existing consumers.
+    actions: List[Dict[str, Any]] = Field(default_factory=list)
+    entities: Dict[str, Any] = Field(default_factory=dict)
+    objective: Optional[str] = None
+    priorities: List[Dict[str, Any]] = Field(default_factory=list)
+    recommendations: List[Dict[str, Any]] = Field(default_factory=list)
+    questions_asked: List[Dict[str, Any]] = Field(default_factory=list)
+    active_disruption: Optional[Dict[str, Any]] = None
+
+
+class ChatResetResponse(BaseModel):
+    status: str
+    cleared_actions: int
+    message: str

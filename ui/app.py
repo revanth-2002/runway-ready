@@ -774,23 +774,22 @@ elif active_tab == "🚨 Disruption Cockpit":
                     or "could you please" in prose.lower()
                 )
 
-                action_chips = []
+                # Follow-ups come from the advisor, which derives them from the parsed
+                # intent and the entities actually present in this exchange. The old
+                # keyword guess here defaulted to BLR/DX412 whenever the query named
+                # neither, suggesting stations and flights the controller never asked about.
+                action_chips = [
+                    {"label": s["label"], "query": s["query"]}
+                    for s in sim_res.get("suggestions", [])
+                ]
                 if is_clarifying_prompt:
                     action_chips = []
-                elif is_whatif_check:
+                elif is_whatif_check and not action_chips:
                     # Encode the displaced crew from the API response into the chip query
                     # so runner.py can look them up without hallucinating a sick disruption
-                    displaced_from_evidence = disrupted_crew_id  # from prior what-if eval_res
-                    displaced_tag = f" displaced:{displaced_from_evidence}" if displaced_from_evidence else ""
+                    displaced_tag = f" displaced:{disrupted_crew_id}" if disrupted_crew_id else ""
                     action_chips = [
                         {"label": f"⚡ Generate Recovery Options for {target_fid}", "query": f"produce recovery options for {target_fid}{displaced_tag}"},
-                        {"label": f"👥 Who is assigned to flight {target_fid}?", "query": f"Which crews are affected if I replace the captain on {target_fid}?"},
-                    ]
-                elif options:
-                    # Already showing recovery options — provide contextual follow-up
-                    action_chips = [
-                        {"label": "🔍 Check Standby Strength (BLR)", "query": "Who is on reserve at BLR tomorrow?"},
-                        {"label": "✈️ Review Aircraft Rotations", "query": f"Which aircraft operates {target_fid} on 2026-09-15?"},
                     ]
 
                 st.session_state.cockpit_messages.append({
@@ -805,6 +804,7 @@ elif active_tab == "🚨 Disruption Cockpit":
                     "twin_view": twin_view,
                     "evidence": evidence,
                     "action_chips": action_chips,
+                    "recommendation": sim_res.get("recommendation"),
                     "time": now_ts,
                 })
                 if twin_view:
@@ -821,6 +821,12 @@ elif active_tab == "🚨 Disruption Cockpit":
         if st.button("🔄 Clear Chat", use_container_width=True):
             st.session_state.cockpit_messages = []
             st.session_state.last_twin_view = None
+            # Also forget the advisor's action memory, otherwise a cleared chat keeps
+            # scoping follow-ups to a disruption the controller can no longer see.
+            try:
+                get_api_client().reset_chat()
+            except Exception as e:
+                logger.warning("Failed to clear server conversation state", error=str(e))
             st.rerun()
 
     # 3. Main Workspace — Full-Width Conversation Stream
@@ -869,6 +875,11 @@ elif active_tab == "🚨 Disruption Cockpit":
 
                         if msg.get("ledger"):
                             render_ledger_table(msg["ledger"], None)
+
+                        # Next-step recommendation sits here, after the option cards and
+                        # ledger, so "use the action chips below" points at what follows.
+                        if msg.get("recommendation") and not msg.get("abstained"):
+                            st.markdown(f"💡 **Next Step:** {msg['recommendation']}")
 
                         # Render action chips only for non-clarifying operational results
                         chips = msg.get("action_chips", [])

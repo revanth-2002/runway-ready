@@ -3,6 +3,7 @@ import os
 import re
 from typing import Any, Dict, Optional, Protocol
 from advisor.audit.logger import StructuredLogger
+from advisor.domain.exceptions import LLMUnavailableError
 
 # Attempt to load environment variables from .env if present
 try:
@@ -17,6 +18,15 @@ logger = StructuredLogger("advisor.llm.client")
 class LLMClient(Protocol):
     def generate(self, prompt: str, temperature: float = 0.0) -> str:
         ...
+
+
+def is_rate_limit_error(e: Exception) -> bool:
+    """Checks if an exception is an HTTP 429 / RESOURCE_EXHAUSTED rate limit error."""
+    code = getattr(e, "code", None) or getattr(e, "status_code", None)
+    if code == 429:
+        return True
+    err_str = str(e).upper()
+    return "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
 
 
 def _extract_relative_date(query: str, default_date: str = "2026-09-15") -> str:
@@ -81,6 +91,42 @@ def _extract_time_range(query: str) -> Dict[str, Any]:
     if "night" in q_lower:
         return {"time_window": "21:00-04:00", "period": "night"}
     return {}
+
+
+# Ways a controller reports a crew member as unavailable, beyond the literal "sick".
+_UNAVAILABLE_PATTERNS = (
+    r"\bis out\b",
+    r"\bis off\b",
+    r"\bunavailable\b",
+    r"\bnot available\b",
+    r"\bcalled out\b",
+    r"\bcall(?:ed|ing)?\s+in\b",
+    r"\bno[- ]show\b",
+    r"\bcan(?:'?t|not)\s+(?:fly|operate|make it|report)\b",
+    r"\bwon'?t\s+(?:fly|operate|make it)\b",
+    r"\bhas\s+dropped\b",
+    r"\bdropped\s+off\b",
+    r"\bpulled\s+(?:off|from)\b",
+    r"\bstood\s+down\b",
+    r"\bgrounded\b",
+    r"\bindisposed\b",
+    r"\bon\s+medical\b",
+)
+
+_CREW_REFERENCE = re.compile(
+    r"\bC-\d{4}\b|\b(?:captain|capt\.?|first\s+officer|fo|pilot|crew)\b", re.IGNORECASE
+)
+
+
+def reports_crew_unavailable(query: str) -> bool:
+    """True when the query reports a specific crew member as unable to operate.
+
+    Requires an actual crew reference, so "the aircraft is grounded" does not read
+    as a crew callout.
+    """
+    if not _CREW_REFERENCE.search(query):
+        return False
+    return any(re.search(p, query, re.IGNORECASE) for p in _UNAVAILABLE_PATTERNS)
 
 
 def _stub_classify_intent(query: str) -> str:
@@ -270,7 +316,7 @@ def _stub_classify_intent(query: str) -> str:
                 flight_ids = re.findall(r"\bDX\d{3,4}\b", query, re.IGNORECASE)
                 pairing_m = re.search(r"\b(P-\d{4})\b", query, re.IGNORECASE)
                 tails = re.findall(r"\bVT-DX[A-F]\b", query, re.IGNORECASE)
-                role = "First Officer" if ("first officer" in q_lower or " fo " in q_lower or " fo" in q_lower) else ("Captain" if "captain" in q_lower else None)
+                role = "First Officer" if re.search(r"\bfirst officer\b|\bfo\b", q_lower) else ("Captain" if "captain" in q_lower else None)
                 return json.dumps({
                     "intents": [{
                         "intent": "evaluate_crew_move",
@@ -317,6 +363,9 @@ def _stub_classify_intent(query: str) -> str:
         or "fatigued" in q_lower
         or "fatigue" in q_lower
         or "out for pairing" in q_lower
+        # Controllers rarely type "sick". These are the everyday ways a crew member
+        # is reported unavailable; missing them dropped the query to general_query.
+        or reports_crew_unavailable(query)
         or "recommend replacement" in q_lower
         or "ranked resolution options" in q_lower
         or "tech delay" in q_lower
@@ -328,7 +377,7 @@ def _stub_classify_intent(query: str) -> str:
         crew_ids = re.findall(r"\bC-\d{4}\b", query, re.IGNORECASE)
         flight_ids = re.findall(r"\bDX\d{3,4}\b", query, re.IGNORECASE)
         tails = re.findall(r"\bVT-DX[A-F]\b", query, re.IGNORECASE)
-        role = "First Officer" if ("first officer" in q_lower or " fo " in q_lower or " fo" in q_lower) else "Captain"
+        role = "First Officer" if re.search(r"\bfirst officer\b|\bfo\b", q_lower) else "Captain"
         day_m = re.search(r"(\d{1,2})\s+Sep", query, re.IGNORECASE)
         day = int(day_m.group(1)) if day_m else 15
         dt = f"2026-09-{day:02d}"
@@ -585,7 +634,7 @@ class GeminiClientWrapper:
         )
         self.client = genai.Client(api_key=api_key, http_options=http_options)
 
-    def generate(self, prompt: str, temperature: float = 0.0, max_output_tokens: int = 300) -> str:
+    def generate(self, prompt: str, temperature: float = 0.0, max_output_tokens: int = 1024) -> str:
         from google.genai import types
 
         # Disable internal reasoning loop to eliminate 30-60s thinking token latency
@@ -597,6 +646,7 @@ class GeminiClientWrapper:
         config_kwargs: Dict[str, Any] = {
             "temperature": temperature,
             "max_output_tokens": max_output_tokens,
+            "tools": None,
         }
         if thinking_cfg is not None:
             config_kwargs["thinking_config"] = thinking_cfg
@@ -610,12 +660,19 @@ class GeminiClientWrapper:
             )
             return resp.text or ""
         except Exception as e:
+            rate_limited = is_rate_limit_error(e)
             logger.warning(
-                "Gemini generate_content failed or timed out, falling back to StubClient",
+                "Gemini generate_content failed or timed out",
                 model=self.model_name,
                 error=str(e),
+                is_rate_limit=rate_limited,
             )
-            return StubClient().generate(prompt, temperature=temperature)
+            # Do not silently substitute stub text here. Callers own the fallback so
+            # they can (a) pick a sensible deterministic path and (b) tell the user
+            # the answer is not LLM-authored.
+            raise LLMUnavailableError(
+                str(e), provider="gemini", is_rate_limit=rate_limited
+            ) from e
 
 
 def get_gemini_config() -> Dict[str, Optional[str]]:

@@ -275,6 +275,14 @@ class ApiClient:
         """POST /api/v1/twin/undo"""
         return self._request("POST", "/api/v1/twin/undo")
 
+    def get_chat_state(self) -> Dict[str, Any]:
+        """GET /api/v1/chat/state"""
+        return self._request("GET", "/api/v1/chat/state")
+
+    def reset_chat(self) -> Dict[str, Any]:
+        """POST /api/v1/chat/reset — forgets the conversation, keeps twin overlays."""
+        return self._request("POST", "/api/v1/chat/reset")
+
     def reset_baseline(self) -> Dict[str, Any]:
         """POST /api/v1/twin/reset"""
         return self._request("POST", "/api/v1/twin/reset")

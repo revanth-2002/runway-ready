@@ -7,17 +7,25 @@ from advisor.data.repository import OpsRepository, DEFAULT_DB_PATH
 from advisor.domain.evidence import LegalityLedger, RuleVerdict
 from advisor.domain.state import OpsState, Overlay
 from advisor.domain.types import DutyProposal
-from advisor.llm.client import LLMClient, get_default_llm_client
-from advisor.llm.parser import parse_intent
+from advisor.domain.exceptions import LLMUnavailableError
+from advisor.llm.client import LLMClient, get_default_llm_client, reports_crew_unavailable
+from advisor.llm.parser import QueryIntent, parse_intent
+from advisor.llm.suggest import derive_suggestions
 from advisor.llm.renderer import (
+    recommend_after_crew_move,
+    recommend_after_flight_crew,
     render_cancellation_briefing,
     render_crew_info,
+    recommend_recovery,
     render_crew_move_evaluation,
+    render_disruption_briefing,
     render_flight_crew_impact,
     render_slotted_prose,
+    render_uncrewed_flights,
     substitute_slots,
 )
 from advisor.orchestrator.abstain import should_abstain
+from advisor.orchestrator.chat_state import ConversationState
 from advisor.orchestrator.resolver import resolve_local_pii
 from advisor.orchestrator.tools import (
     tool_commit_crew_reassignment,
@@ -42,14 +50,94 @@ def orchestrate(
     repo: Optional[OpsRepository] = None,
     client: Optional[LLMClient] = None,
     request_id: Optional[str] = None,
+    chat_state: Optional[ConversationState] = None,
 ) -> Generator[Tuple[str, Any], None, None]:
     """Autonomous AI Agent generator dispatching modular tools based on extracted intent and entities:
     1. ('status', '<message>')
-    2. ('abstain', {'reason': '...', 'message': '...'}) -> halts
-    3. ('clarify', {'message': '...', 'missing_parameters': [...]}) -> prompts user
-    4. ('evidence', {...})
-    5. ('options', [<RecoveryOption>, ...])
-    6. ('prose', '<briefing text>')
+    2. ('intent', <QueryIntent>)
+    3. ('abstain', {'reason': '...', 'message': '...'}) -> halts
+    4. ('clarify', {'message': '...', 'missing_parameters': [...]}) -> prompts user
+    5. ('evidence', {...})
+    6. ('options', [<RecoveryOption>, ...])
+    7. ('prose', '<briefing text>')
+    8. ('recommendation', '<next step>') -> rendered after options/ledger, at the end
+    9. ('suggestions', [{'label': '...', 'query': '...'}]) -> question-aware follow-ups
+
+    Consumers filter by event name, so unrecognised kinds are safely ignored.
+
+    `chat_state` carries what earlier turns already did. It is the ground truth for
+    resolving follow-ups ("show me the options") and for scoping flight questions to
+    the disruption under discussion.
+    """
+    if repo is None:
+        repo = OpsRepository(state.db_path)
+    if client is None:
+        client = get_default_llm_client()
+
+    from advisor.orchestrator.graph import run_advisor_graph
+
+    for event in run_advisor_graph(
+        query,
+        state,
+        repo,
+        client=client,
+        request_id=request_id,
+        chat_state=chat_state,
+    ):
+        yield event
+
+
+_STATION_CODES = ("BLR", "DEL", "BOM", "HYD", "MAA", "CCU", "COK", "GOI")
+
+
+def _crew_rank(repo: OpsRepository, crew_id: str) -> Optional[str]:
+    """Authoritative roster rank, so a First Officer is never labelled Captain."""
+    try:
+        crew = repo.find_crew(crew_id)
+        return crew.rank if crew else None
+    except Exception:
+        return None
+
+
+def _conversation_context(chat_state: Optional[ConversationState]) -> str:
+    """Prompt section carrying prior turns, so answers build on what was established."""
+    if chat_state is None or not chat_state.turns:
+        return ""
+    return f"\nConversation so far:\n{chat_state.brief()}\n"
+
+
+def _names_explicit_schedule(clean_query: str) -> bool:
+    """True when the controller actually named a station, route, or date.
+
+    Read from the query text rather than the parsed entities: the intent parser
+    back-fills `origin`/`date` defaults even for a bare "which flights are affected?",
+    so parsed entities cannot distinguish a real schedule lookup from a follow-up.
+    `clean_query` is post-resolver, so city names are already IATA codes.
+    """
+    import re as _re
+
+    if _re.search(r"\b\d{4}-\d{2}-\d{2}\b", clean_query):
+        return True
+    if _re.search(r"\bDX\d{3,4}\b", clean_query, _re.IGNORECASE):
+        return True
+    return any(
+        _re.search(rf"\b{code}\b", clean_query, _re.IGNORECASE) for code in _STATION_CODES
+    )
+
+
+def _orchestrate_core(
+    query: str,
+    state: OpsState,
+    repo: Optional[OpsRepository] = None,
+    client: Optional[LLMClient] = None,
+    request_id: Optional[str] = None,
+    chat_state: Optional[ConversationState] = None,
+    precomputed: Optional[Tuple[str, Dict[str, str], List[str], QueryIntent]] = None,
+) -> Generator[Tuple[str, Any], None, None]:
+    """Intent dispatch body. See `orchestrate` for the emitted event contract.
+
+    `precomputed` carries (clean_query, pii_map, crew_ids, intent) from the graph's
+    resolve/parse nodes so those steps are not repeated here.
     """
     if request_id:
         set_request_id(request_id)
@@ -58,11 +146,15 @@ def orchestrate(
     if client is None:
         client = get_default_llm_client()
 
-    yield ("status", "De-identifying PII and extracting operational entities...")
-    clean_query, pii_map, crew_ids = resolve_local_pii(query, repo)
+    if precomputed is not None:
+        clean_query, pii_map, crew_ids, intent_bundle = precomputed
+    else:
+        yield ("status", "De-identifying PII and extracting operational entities...")
+        clean_query, pii_map, crew_ids = resolve_local_pii(query, repo)
 
-    yield ("status", "Agent reasoning: extracting multi-parameter intent & operational scope...")
-    intent_bundle = parse_intent(clean_query, client)
+        yield ("status", "Agent reasoning: extracting multi-parameter intent & operational scope...")
+        intent_bundle = parse_intent(clean_query, client)
+    yield ("intent", intent_bundle)
 
     # 1. Abstention Gate
     abstention = should_abstain(intent_bundle, repo)
@@ -135,6 +227,8 @@ def orchestrate(
             "prose",
             f"**Roster Reassignment Committed:** Replacement `{replacement_c}` successfully mobilized for pairing `{p_id}`. Digital twin updated to prevent scheduling collisions.",
         )
+        if chat_state is not None:
+            chat_state.resolve_disruption(replacement_c)
         return
 
     # 5. Tool: Lookup Reserves
@@ -172,6 +266,52 @@ def orchestrate(
 
     # 6. Tool: Lookup Flights
     if intent_bundle.intent == "lookup_flights":
+        # Step-by-step rule: while a disruption is open and the controller has not
+        # named a specific route or date, "which flights..." means the affected legs,
+        # not the whole station schedule. Recovery options come next, on request.
+        open_disruption = (
+            chat_state.open_disruption_context() if chat_state is not None else None
+        )
+        if open_disruption and not _names_explicit_schedule(clean_query):
+            uncrewed = [
+                f
+                for f in (repo.find_flight(fid) for fid in open_disruption.uncrewed_flight_ids)
+                if f is not None
+            ]
+            yield (
+                "status",
+                f"Scoping to the {len(uncrewed)} uncrewed leg(s) from the {open_disruption.crew_id} disruption...",
+            )
+            yield (
+                "evidence",
+                {
+                    "uncrewed_flights": uncrewed,
+                    "scoped_to_disruption": True,
+                    "disrupted_crew_id": open_disruption.crew_id,
+                    "broken_pairing_id": open_disruption.pairing_id,
+                },
+            )
+            yield (
+                "prose",
+                render_uncrewed_flights(
+                    uncrewed,
+                    open_disruption.crew_id,
+                    open_disruption.pairing_id,
+                    resolved_by=open_disruption.resolved_by,
+                ),
+            )
+            yield (
+                "recommendation",
+                f"Shall I produce ranked recovery options to cover these legs on pairing "
+                f"`{open_disruption.pairing_id}`?",
+            )
+            append_audit_event(
+                "LOOKUP_UNCREWED_FLIGHTS",
+                {"pairing_id": open_disruption.pairing_id, "count": len(uncrewed)},
+                request_id=request_id,
+            )
+            return
+
         orig = intent_bundle.entities.get("origin")
         dest = intent_bundle.entities.get("destination")
         dt = intent_bundle.entities.get("date", "2026-09-15")
@@ -530,6 +670,9 @@ def orchestrate(
         yield ("evidence", eval_res)
         briefing = render_crew_move_evaluation(eval_res, pii_map)
         yield ("prose", briefing)
+        rec = recommend_after_crew_move(eval_res)
+        if rec:
+            yield ("recommendation", rec)
         return
 
     # 13b. Tool: Lookup Flight Crew / Crew Impact
@@ -540,6 +683,9 @@ def orchestrate(
         briefing = render_flight_crew_impact(f_res)
         yield ("evidence", f_res)
         yield ("prose", briefing)
+        rec = recommend_after_flight_crew(f_res)
+        if rec:
+            yield ("recommendation", rec)
         return
 
     # 14. Tool: Lookup Crew Profile / Info
@@ -558,7 +704,23 @@ def orchestrate(
 
     # 15. Tool: Simulate Crew Disruption & Candidate Ranking
     disrupted_crew_id = None
-    if intent_bundle.intent == "simulate_sick" or any(k in clean_query.lower() for k in ["sick", "incapacitated", "fatigued", "recommend replacement", "call in sick", "called 01:30z", "is out for", "recurrent training lapsed", "cheapest legal way"]):
+    # A resolved crew ID plus an unavailability or advice phrasing is a disruption,
+    # whatever the classifier decided. Without this, "Captain C-1042 is out — what
+    # should I do?" fell through and asked for the crew ID already in hand.
+    _asks_for_advice = any(
+        k in clean_query.lower()
+        for k in ["what should i do", "what do i do", "what now", "options", "recommend", "help me", "advise"]
+    )
+    _reports_unavailable = reports_crew_unavailable(clean_query)
+
+    if (
+        intent_bundle.intent in ("simulate_sick", "request_recovery_options")
+        or any(
+            k in clean_query.lower()
+            for k in ["sick", "incapacitated", "fatigued", "recommend replacement", "call in sick", "called 01:30z", "is out for", "recurrent training lapsed", "cheapest legal way"]
+        )
+        or (crew_ids and (_reports_unavailable or _asks_for_advice))
+    ):
         if crew_ids:
             disrupted_crew_id = crew_ids[0]
         elif intent_bundle.entities.get("crew_ids"):
@@ -623,10 +785,47 @@ def orchestrate(
         yield ("options", ranked_options)
 
         yield ("status", "Generating controller operational briefing...")
-        raw_prose = render_slotted_prose(impact, ledger, ranked_options, client)
-        final_prose = substitute_slots(raw_prose, impact, ledger, ranked_options, pii_map)
+        raw_prose, prose_meta = render_slotted_prose(
+            impact,
+            ledger,
+            ranked_options,
+            client,
+            question=clean_query,
+            pii_map=pii_map,
+            return_meta=True,
+            conversation_brief=chat_state.brief() if chat_state is not None else None,
+        )
+        narrative = substitute_slots(raw_prose, impact, ledger, ranked_options, pii_map)
+        # The narrative is a paragraph; on its own it answers "what happened" but not
+        # "which flights". Compose it with the affected-leg manifest. When the LLM is
+        # unavailable the narrative only restates that headline, so drop it.
+        yield (
+            "prose",
+            render_disruption_briefing(
+                impact,
+                ledger,
+                ranked_options,
+                narrative if prose_meta.get("source") == "llm" else "",
+                pii_map,
+                banner=prose_meta.get("banner", ""),
+                crew_rank=_crew_rank(repo, disrupted_crew_id),
+            ),
+        )
 
-        yield ("prose", final_prose)
+        top = ranked_options[0].crew_id if ranked_options else None
+        rec = recommend_recovery(ranked_options, impact, pii_map)
+        if rec:
+            yield ("recommendation", rec)
+
+        uncrewed_ids = [f.flight_id for f in impact.uncrewed_flights]
+        station = impact.uncrewed_flights[0].origin if impact.uncrewed_flights else None
+        if chat_state is not None:
+            chat_state.open_disruption(
+                crew_id=disrupted_crew_id,
+                pairing_id=impact.broken_pairing_id,
+                uncrewed_flight_ids=uncrewed_ids,
+                station=station,
+            )
 
         append_audit_event(
             "SIMULATION_COMPLETED",
@@ -634,7 +833,7 @@ def orchestrate(
                 "disrupted_crew": disrupted_crew_id,
                 "broken_pairing": impact.broken_pairing_id,
                 "uncrewed_count": len(impact.uncrewed_flights),
-                "top_candidate": ranked_options[0].crew_id if ranked_options else None,
+                "top_candidate": top,
             },
             request_id=request_id,
         )
@@ -642,10 +841,14 @@ def orchestrate(
 
     # 16. Conversational General Query / Operational Knowledge Responder
     yield ("status", "Generating conversational operational response...")
+    # Use the de-identified query: `query` still contains pilot names, and this prompt
+    # leaves the process for an external provider.
     prompt = f"""You are an expert Airline Operations Control Center (AOCC) AI assistant.
-Answer this operational query accurately, conversationally, and concisely:
-Query: "{query}"
-
+Answer this operational query accurately, conversationally, and concisely.
+Answer only what was asked. If the query needs a flight number, crew ID, or station
+that was not supplied, say exactly what is missing instead of guessing.
+Query: "{clean_query}"
+{_conversation_context(chat_state)}
 System Context:
 - Hubs: BLR, DEL, BOM, HYD, MAA.
 - Fleet: A320 (162 seats, VT-DXA..VT-DXD), ATR72 (72 seats, VT-DXE..VT-DXF).
@@ -657,8 +860,14 @@ System Context:
         if resp and len(resp.strip()) > 10 and not resp.strip().startswith("Query processed"):
             yield ("prose", resp.strip())
             return
-    except Exception:
-        pass
+    except LLMUnavailableError as e:
+        logger.warning(
+            "LLM unavailable for conversational response, using guided clarification",
+            error=str(e),
+            is_rate_limit=e.is_rate_limit,
+        )
+    except Exception as e:
+        logger.warning("Conversational response generation failed", error=str(e))
 
     # Dynamic, intent-aware response and clarifying question generator
     q_low = clean_query.lower()
