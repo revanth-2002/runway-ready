@@ -323,6 +323,10 @@ if "pending_twin_view" not in st.session_state:
     st.session_state.pending_twin_view = None
 if "active_station_hub" not in st.session_state:
     st.session_state.active_station_hub = "BLR"
+if "offline_sandbox_mode" not in st.session_state:
+    st.session_state.offline_sandbox_mode = False
+if "nav_target" not in st.session_state:
+    st.session_state.nav_target = None
 
 # Query Live Health & Twin State from Backend API
 try:
@@ -345,6 +349,9 @@ with st.sidebar:
     status_icon = "🟢" if is_live else "🔴"
     status_color = "#10b981" if is_live else "#ef4444"
 
+    is_sandbox = st.session_state.get("offline_sandbox_mode", False)
+    engine_badge = "Offline Sandbox (Deterministic)" if is_sandbox else health_info.get('llm_mode', 'standard')
+
     st.markdown(
         f"""
         <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid {status_color}; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;">
@@ -353,7 +360,7 @@ with st.sidebar:
                 <strong style="color: {status_color}; font-size: 13px;">API Service: /api/v1</strong>
             </div>
             <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">
-                Engine: <b>{health_info.get('llm_mode', 'standard')}</b><br/>
+                Engine: <b>{engine_badge}</b><br/>
                 Digital Twin: <b>{'Pre-Warmed' if health_info.get('twin_warmed') else 'Standby'}</b>
             </div>
         </div>
@@ -386,7 +393,7 @@ with st.sidebar:
         st.session_state.active_query = query
         st.session_state.selected_query = query
         st.session_state.directive_input_field = query
-        st.session_state.active_tab = "🚨 Disruption Cockpit"
+        st.session_state.nav_target = "🚨 Disruption Cockpit"
         st.session_state.last_finalized = None
         st.session_state.input_history.insert(0, query)
         st.session_state.action_history.insert(0, {
@@ -447,9 +454,19 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### 🤖 Reasoning Engine")
+
+    offline_sandbox = st.toggle(
+        "⚡ Offline Sandbox Mode",
+        value=st.session_state.get("offline_sandbox_mode", False),
+        help="Run 100% locally in deterministic sandbox mode with zero external network latency.",
+        key="offline_sandbox_mode",
+    )
+
     llm_info = get_active_llm_info()
-    if llm_info["configured"]:
-        st.success(f"**Gemini Live**\n\n`{llm_info['model']}`")
+    if offline_sandbox:
+        st.info("**Offline Sandbox Active**\n\nDeterministic operational engine (<0.4s response, 0 external API calls)")
+    elif llm_info["configured"]:
+        st.success(f"**Gemini Live**\n\n`{llm_info['model']}`\n\n*(30s timeout breaker active)*")
     else:
         st.info("**Offline Stub**\n\nDeterministic sandbox mode\n\n*(Set `GEMINI_API_KEY` in `.env`)*")
 
@@ -470,6 +487,11 @@ WORKSPACE_TABS = [
     "👥 Standby Roster",
     "✈️ Fleet & Schedule",
 ]
+
+# Apply pending programmatic workspace navigation before radio widget instantiation
+if st.session_state.get("nav_target") in WORKSPACE_TABS:
+    st.session_state.active_tab = st.session_state.nav_target
+    st.session_state.nav_target = None
 
 if "active_tab" not in st.session_state or st.session_state.active_tab not in WORKSPACE_TABS:
     st.session_state.active_tab = "🌐 Network Overview"
@@ -590,7 +612,7 @@ if active_tab == "🌐 Network Overview":
                 type="primary" if stn_code == curr_hub else "secondary",
             ):
                 st.session_state.active_station_hub = stn_code
-                st.session_state.active_tab = "📍 Airport Hubs (BLR, DEL...)"
+                st.session_state.nav_target = "📍 Airport Hubs (BLR, DEL...)"
                 st.rerun()
 
     st.markdown("---")
@@ -694,7 +716,8 @@ elif active_tab == "🚨 Disruption Cockpit":
         status_box = st.status("Executing operational pipeline via API...", expanded=True)
 
         try:
-            sim_res = api_client.simulate_disruption(active_query)
+            is_offline = st.session_state.get("offline_sandbox_mode", False)
+            sim_res = api_client.simulate_disruption(active_query, offline_mode=is_offline)
         except Exception as err:
             status_box.update(label=f"API Error: {err}", state="error", expanded=False)
             st.error(f"Error communicating with backend API: {err}")
@@ -819,5 +842,5 @@ with st.container():
     if submit_clicked and typed_directive.strip():
         st.session_state.active_query = typed_directive.strip()
         st.session_state.directive_input_field = typed_directive.strip()
-        st.session_state.active_tab = "🚨 Disruption Cockpit"
+        st.session_state.nav_target = "🚨 Disruption Cockpit"
         st.rerun()

@@ -82,3 +82,62 @@ def test_get_default_llm_client_fallback_on_init_error():
             client = get_default_llm_client()
             # Should gracefully fall back to StubClient without crashing
             assert isinstance(client, StubClient)
+
+
+def test_gemini_client_wrapper_http_options():
+    mock_genai_client = MagicMock()
+    with patch("google.genai.Client", return_value=mock_genai_client) as mock_client_cls:
+        wrapper = GeminiClientWrapper(api_key="mock_key", model_name="gemini-2.5-flash", timeout_ms=30000)
+        assert wrapper.timeout_ms == 30000
+        mock_client_cls.assert_called_once()
+        http_opt = mock_client_cls.call_args.kwargs["http_options"]
+        assert http_opt.timeout == 30000
+        assert http_opt.retry_options.attempts == 1
+
+
+def test_render_slotted_prose_rate_limit_notice():
+    from advisor.domain.evidence import ImpactReport, LegalityLedger
+    from advisor.llm.renderer import render_slotted_prose
+
+    failing_client = MagicMock()
+    failing_client.generate.side_effect = RuntimeError("429 RESOURCE_EXHAUSTED rate limit exceeded")
+
+    mock_impact = ImpactReport(
+        disruption_id="disp-001",
+        disrupted_crew_id="C-1042",
+        broken_pairing_id="P-2291",
+        uncrewed_flights=(),
+        delayed_rotations=(),
+        stranded_companions=(),
+        passengers_affected=180,
+        source_rows=[],
+    )
+    mock_ledger = LegalityLedger(subject="C-1042", context="test", verdicts=[])
+
+    prose = render_slotted_prose(mock_impact, mock_ledger, [], client=failing_client)
+    assert "You have hit the limit, please try again after some time." in prose
+    assert "Captain {{impact.crew_id}}" in prose
+
+
+def test_render_slotted_prose_non_429_no_warning():
+    from advisor.domain.evidence import ImpactReport, LegalityLedger
+    from advisor.llm.renderer import render_slotted_prose
+
+    failing_client = MagicMock()
+    failing_client.generate.side_effect = RuntimeError("Network timeout or connection refused")
+
+    mock_impact = ImpactReport(
+        disruption_id="disp-002",
+        disrupted_crew_id="C-1042",
+        broken_pairing_id="P-2291",
+        uncrewed_flights=(),
+        delayed_rotations=(),
+        stranded_companions=(),
+        passengers_affected=180,
+        source_rows=[],
+    )
+    mock_ledger = LegalityLedger(subject="C-1042", context="test", verdicts=[])
+
+    prose = render_slotted_prose(mock_impact, mock_ledger, [], client=failing_client)
+    assert "You have hit the limit" not in prose
+    assert "Captain {{impact.crew_id}}" in prose

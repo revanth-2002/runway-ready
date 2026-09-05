@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional
 from advisor.audit.logger import StructuredLogger
 from advisor.domain.evidence import CostBreakdown, ImpactReport
-from advisor.domain.types import Crew, DutyProposal
+from advisor.domain.types import Crew, DutyProposal, Flight
 
 logger = StructuredLogger("advisor.reasoning.costing")
 
@@ -111,3 +111,50 @@ def compute_cancellation_benchmark(
         total_inr=total_inr,
         line_items=line_items,
     )
+
+
+def compute_station_cancellation_loss(
+    flights: List[Flight],
+    passengers: int,
+    rates: Optional[Dict[str, float]] = None,
+    unique_tails: Optional[List[str]] = None,
+) -> CostBreakdown:
+    """Calculates comprehensive financial loss for mass/station flight cancellations."""
+    if rates is None:
+        rates = {}
+
+    line_items: List[str] = []
+    flight_count = len(flights)
+    per_flight_fee = rates.get("cancellation_per_flight", rates.get("cancel_fixed_fee", 250000.0))
+    flight_cancel_total = per_flight_fee * flight_count
+    line_items.append(
+        f"Flight Cancellation Penalties ({flight_count} flights @ ₹{int(per_flight_fee):,}/flight): ₹{int(flight_cancel_total):,}"
+    )
+
+    # Passenger ticket refund / DGCA passenger charter compensation liability
+    pax_rate = rates.get("cancel_pax_comp", 3500.0)
+    pax_total = passengers * pax_rate
+    line_items.append(
+        f"Passenger Compensation & Refund Liability ({passengers:,} passengers @ ₹{int(pax_rate):,}/pax): ₹{int(pax_total):,}"
+    )
+
+    # Grounding & positioning friction per stranded tail
+    tail_count = len(unique_tails) if unique_tails else len({f.tail_id for f in flights if f.tail_id})
+    tail_grounding_fee = 120000.0
+    tail_grounding_total = tail_count * tail_grounding_fee
+    if tail_count > 0:
+        line_items.append(
+            f"Aircraft Grounding & Ferry Repositioning ({tail_count} aircraft @ ₹{int(tail_grounding_fee):,}/tail): ₹{int(tail_grounding_total):,}"
+        )
+
+    total_loss_inr = flight_cancel_total + pax_total + tail_grounding_total
+
+    return CostBreakdown(
+        callout_fee=0.0,
+        overtime_fee=0.0,
+        deadhead_fare=tail_grounding_total,
+        delay_penalty=0.0,
+        total_inr=total_loss_inr,
+        line_items=line_items,
+    )
+

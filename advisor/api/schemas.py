@@ -52,6 +52,7 @@ class NetworkOverviewResponse(BaseModel):
 class DisruptionSimulateRequest(BaseModel):
     query: str
     context: Optional[Dict[str, Any]] = None
+    offline_mode: bool = False
 
 
 class RepairOptionSchema(BaseModel):

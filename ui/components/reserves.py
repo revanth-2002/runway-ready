@@ -39,10 +39,23 @@ def render_reserve_board(
     if reserve_details and selected_station == default_station:
         reserves = reserve_details
     else:
-        raw_reserves = repo.list_reserves(base=selected_station)
+        try:
+            raw_reserves = repo.list_reserves(base=selected_station, date="2026-09-15")
+        except TypeError:
+            try:
+                raw_reserves = repo.list_reserves(base=selected_station, distinct_crew=True)
+            except TypeError:
+                raw_reserves = repo.list_reserves(base=selected_station)
+        if not raw_reserves:
+            try:
+                raw_reserves = repo.list_reserves(base=selected_station, distinct_crew=True)
+            except TypeError:
+                raw_reserves = repo.list_reserves(base=selected_station)
         reserves = []
         for r in raw_reserves:
             c = repo.get_crew(r.crew_id)
+            if not c:
+                continue
             ratings = repo.list_ratings(r.crew_id)
             clk = repo.get_duty_clock(r.crew_id)
             duty_7d = clk.duty_hours_7d if clk else 0.0
@@ -58,6 +71,16 @@ def render_reserve_board(
                 "reachability_minutes": c.reachability_minutes or 45,
                 "duty_hours_7d": duty_7d,
             })
+
+    # Guarantee each crew member appears exactly once (no duplicate shifts)
+    unique_reserves = []
+    seen_cids = set()
+    for r in reserves:
+        cid = r.get("crew_id")
+        if cid and cid not in seen_cids:
+            seen_cids.add(cid)
+            unique_reserves.append(r)
+    reserves = unique_reserves
 
     with col_rank:
         rank_filter = st.selectbox(

@@ -52,3 +52,65 @@ def test_orchestrate_abstention(base_state, repo):
     abstain_event = next(e for e in events if e[0] == "abstain")
     assert abstain_event[1]["reason"] == "UNKNOWN_ENTITY"
     assert "C-9999" in abstain_event[1]["message"]
+
+
+def test_orchestrate_mass_cancellation_financial_loss(base_state, repo):
+    query = "If I cancel all the flights departing from blr what will be the total cost loss"
+    events = list(orchestrate(query, base_state, repo))
+    event_types = [e[0] for e in events]
+
+    assert "evidence" in event_types
+    assert "prose" in event_types
+    assert "abstain" not in event_types
+
+    evidence_event = next(e for e in events if e[0] == "evidence")
+    data = evidence_event[1]
+    assert data["station"] == "BLR"
+    assert data["flight_count"] > 0
+    assert data["passengers_affected"] > 0
+    assert data["cost_breakdown"].total_inr > 0
+
+    prose_event = next(e for e in events if e[0] == "prose")
+    prose = prose_event[1]
+    assert "Mass Flight Cancellation Simulation" in prose
+    assert "BLR" in prose
+    assert "Total Estimated Financial Loss" in prose
+    # Must NOT hallucinate Captain A. Nair or single-crew pairing slot
+    assert "Captain A. Nair is incapacitated" not in prose
+
+
+def test_orchestrate_reassignment_and_collision_prevention(base_state, repo):
+    # 1. Commit reassignment of C-3310 to pairing P-2291
+    from advisor.orchestrator.tools import tool_commit_crew_reassignment, tool_lookup_reserves
+    from advisor.reasoning.candidates import enumerate_candidates
+    from advisor.domain.evidence import ImpactReport
+
+    updated_state = tool_commit_crew_reassignment(
+        state=base_state,
+        pairing_id="P-2291",
+        disrupted_crew_id="C-1042",
+        replacement_crew_id="C-3310",
+    )
+    assert len(updated_state.overlays) == 1
+
+    # 2. Check reserves - C-3310 should now show CALLED
+    res_data = tool_lookup_reserves(repo, updated_state, station="BLR")
+    c3310_item = next(item for item in res_data["reserve_details"] if item["crew_id"] == "C-3310")
+    assert "CALLED" in c3310_item["standby_status"]
+
+    # 3. Simulate subsequent disruption - C-3310 must NOT be suggested again (collision prevented)
+    mock_impact = ImpactReport(
+        disruption_id="disp-002",
+        disrupted_crew_id="C-5837",
+        broken_pairing_id="P-9999",
+        uncrewed_flights=(),
+        delayed_rotations=(),
+        stranded_companions=(),
+        passengers_affected=150,
+        source_rows=[],
+    )
+    rates = repo.get_cost_rates()
+    cands = enumerate_candidates(mock_impact, updated_state, repo, rates)
+    cand_ids = [c.crew_id for c in cands]
+    assert "C-3310" not in cand_ids
+

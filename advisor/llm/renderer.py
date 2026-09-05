@@ -1,7 +1,7 @@
 """Slot-filled prose renderer and deterministic slot substitutor."""
 
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from advisor.audit.logger import StructuredLogger
 from advisor.domain.evidence import ImpactReport, LegalityLedger, RecoveryOption
 from advisor.domain.exceptions import SlotSubstitutionError
@@ -9,6 +9,17 @@ from advisor.llm.client import LLMClient, StubClient
 
 logger = StructuredLogger("advisor.llm.renderer")
 
+
+
+def is_429_rate_limit_error(e: Exception) -> bool:
+    """Checks if an exception is strictly an HTTP 429 or RESOURCE_EXHAUSTED rate limit error."""
+    code = getattr(e, "code", None) or getattr(e, "status_code", None)
+    if code == 429:
+        return True
+    err_str = str(e).upper()
+    if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+        return True
+    return False
 
 
 def render_slotted_prose(
@@ -34,6 +45,7 @@ Uncrewed flights count: {len(impact.uncrewed_flights)}
 Passengers affected: {impact.passengers_affected}
 Available options count: {len(options)}
 """
+    rate_limit_warning = ""
     try:
         raw_text = client.generate(prompt, temperature=0.0)
         if "{{" in raw_text:
@@ -41,10 +53,12 @@ Available options count: {len(options)}
             return raw_text
     except Exception as e:
         logger.warning("LLM prose generation failed, falling back to deterministic template", error=str(e))
+        if is_429_rate_limit_error(e):
+            rate_limit_warning = "> ⚠️ **You have hit the limit, please try again after some time.** (Falling back to certified deterministic operational recovery)\n\n"
 
     logger.debug("Using fallback deterministic slotted prose template")
     # Deterministic slot template fallback
-    return (
+    return rate_limit_warning + (
         "Captain {{impact.crew_id}} is incapacitated for {{impact.date}}. "
         "This breaks pairing {{impact.pairing_id}}, leaving {{impact.uncrewed_count}} flight(s) uncrewed "
         "and stranding {{impact.passengers_affected}} passengers. "
@@ -159,3 +173,28 @@ def build_deterministic_briefing(
                 )
 
     return "\n".join(lines)
+
+
+def render_cancellation_briefing(
+    station: str,
+    date: str,
+    flight_count: int,
+    passengers: int,
+    tails: List[str],
+    cost_breakdown: Any,
+) -> str:
+    """Generates clear, factual operational briefing for mass flight cancellations and financial loss."""
+    lines = [
+        f"**🚨 Mass Flight Cancellation Simulation — {station} Hub ({date})**\n",
+        f"• **Scope:** Cancelling all scheduled departures from **{station}** on **{date}**.",
+        f"• **Operational Impact:** **{flight_count} flights** cancelled across **{len(tails)} aircraft tails** ({', '.join(tails) if tails else 'N/A'}).",
+        f"• **Passengers Stranded:** **{passengers:,} passengers** affected.",
+        f"\n**💰 Total Estimated Financial Loss: ₹{int(cost_breakdown.total_inr):,}**",
+    ]
+    if hasattr(cost_breakdown, "line_items") and cost_breakdown.line_items:
+        lines.append("\n**Itemized Financial Loss Breakdown:**")
+        for item in cost_breakdown.line_items:
+            lines.append(f"  • {item}")
+
+    return "\n".join(lines)
+

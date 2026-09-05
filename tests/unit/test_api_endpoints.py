@@ -72,6 +72,19 @@ def test_api_simulate_disruption(client):
     assert top_opt["cost"]["total_inr"] > 0
 
 
+def test_api_simulate_disruption_offline_mode(client):
+    payload = {
+        "query": "Captain A. Nair is sick for flight DX412. What is the impact and who is the recommended replacement?",
+        "offline_mode": True,
+    }
+    response = client.post("/api/v1/disruptions/simulate", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["abstained"] is False
+    assert len(data["options"]) > 0
+
+
 def test_api_simulate_abstention(client):
     payload = {"query": "Is Captain C-9999 available to fly DX412?"}
     response = client.post("/api/v1/disruptions/simulate", json=payload)

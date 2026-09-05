@@ -68,6 +68,7 @@ def enumerate_candidates(
 
     candidates: List[RecoveryOption] = []
     seen_crew = {impact.disrupted_crew_id}
+    twin_view = state.materialize()
 
     # 1. On-base active reserves
     on_base_reserves = repo.list_reserves(base=target_station)
@@ -76,6 +77,11 @@ def enumerate_candidates(
             continue
         c = repo.get_crew(res.crew_id)
         if c.rank != target_rank and not (target_rank == "Captain" and c.rank == "Captain"):
+            continue
+
+        # Prevent work collision if reserve was already CALLED or assigned in Digital Twin
+        twin_crew = twin_view.crew.get(c.crew_id)
+        if twin_crew and (twin_crew.is_incapacitated or twin_crew.on_call_status == "CALLED" or (twin_crew.assigned_pairing_id and twin_crew.assigned_pairing_id != impact.broken_pairing_id)):
             continue
 
         seen_crew.add(c.crew_id)
@@ -118,6 +124,10 @@ def enumerate_candidates(
             continue
         c = repo.get_crew(res.crew_id)
         if c.rank != target_rank and not (target_rank == "Captain" and c.rank == "Captain"):
+            continue
+
+        twin_crew = twin_view.crew.get(c.crew_id)
+        if twin_crew and (twin_crew.is_incapacitated or twin_crew.on_call_status == "CALLED" or (twin_crew.assigned_pairing_id and twin_crew.assigned_pairing_id != impact.broken_pairing_id)):
             continue
 
         seen_crew.add(c.crew_id)

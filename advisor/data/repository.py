@@ -88,6 +88,77 @@ class OpsRepository:
             for r in cursor.fetchall()
         ]
 
+    def list_crew_by_base(self, base: str, rank: Optional[str] = None) -> List[Crew]:
+        """Lists crew based at a specific station, optionally filtered by rank."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        if rank:
+            cursor.execute(
+                "SELECT crew_id, name, rank, base, seniority, reachability_minutes FROM crew WHERE base = ? AND rank = ? ORDER BY seniority DESC",
+                (base, rank),
+            )
+        else:
+            cursor.execute(
+                "SELECT crew_id, name, rank, base, seniority, reachability_minutes FROM crew WHERE base = ? ORDER BY seniority DESC",
+                (base,),
+            )
+        return [
+            Crew(
+                crew_id=r["crew_id"],
+                name=r["name"],
+                rank=r["rank"],
+                base=r["base"],
+                seniority=r["seniority"],
+                reachability_minutes=r["reachability_minutes"],
+            )
+            for r in cursor.fetchall()
+        ]
+
+    def list_high_duty_crew(self, threshold_hours: float = 45.0) -> List[Dict[str, Any]]:
+        """Lists crew whose 7-day cumulative duty hours meet or exceed threshold."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT crew_id, duty_hours_7d, flight_hours_28d FROM duty_clock WHERE duty_hours_7d >= ? ORDER BY duty_hours_7d DESC",
+            (threshold_hours,),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+    def get_crew_for_tail(
+        self, tail_id: str, date: Optional[str] = "2026-09-15", role: str = "Captain"
+    ) -> Optional[Crew]:
+        """Retrieves the crew member rostered on a specific aircraft tail."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        query = """
+            SELECT c.crew_id, c.name, c.rank, c.base, c.seniority, c.reachability_minutes
+            FROM flight f
+            JOIN pairing_leg pl ON f.flight_id = pl.flight_id
+            JOIN assignment a ON pl.pairing_id = a.pairing_id
+            JOIN crew c ON a.crew_id = c.crew_id
+            WHERE f.tail_id = ?
+        """
+        params: List[Any] = [tail_id]
+        if date:
+            query += " AND f.dep_utc LIKE ?"
+            params.append(f"{date}%")
+        if role:
+            query += " AND a.role LIKE ?"
+            params.append(f"%{role}%")
+        query += " ORDER BY f.dep_utc ASC LIMIT 1"
+        cursor.execute(query, tuple(params))
+        row = cursor.fetchone()
+        if row:
+            return Crew(
+                crew_id=row["crew_id"],
+                name=row["name"],
+                rank=row["rank"],
+                base=row["base"],
+                seniority=row["seniority"],
+                reachability_minutes=row["reachability_minutes"],
+            )
+        return None
+
     def get_flight(self, flight_id: str) -> Flight:
         """Retrieves a flight by ID or flight number. Raises EntityNotFoundError if missing."""
         conn = self._get_connection()
@@ -301,9 +372,17 @@ class OpsRepository:
         ]
 
     def list_reserves(
-        self, base: Optional[str] = None, report_time_utc: Optional[str] = None
+        self,
+        base: Optional[str] = None,
+        report_time_utc: Optional[str] = None,
+        date: Optional[str] = None,
+        distinct_crew: bool = False,
+        *args: Any,
+        **kwargs: Any,
     ) -> List[Reserve]:
-        """Lists active reserves optionally filtered by station and coverage window."""
+        """Lists active reserves optionally filtered by station, date, and coverage window."""
+        date = date or kwargs.get("date")
+        distinct_crew = distinct_crew or kwargs.get("distinct_crew", False)
         conn = self._get_connection()
         cursor = conn.cursor()
         query = "SELECT crew_id, base, oncall_start_utc, oncall_end_utc, standby_status FROM reserve WHERE 1=1"
@@ -314,6 +393,11 @@ class OpsRepository:
         if report_time_utc:
             query += " AND oncall_start_utc <= ? AND oncall_end_utc >= ?"
             params.extend([report_time_utc, report_time_utc])
+        elif date:
+            query += " AND oncall_start_utc LIKE ?"
+            params.append(f"{date}%")
+        elif distinct_crew:
+            query += " GROUP BY crew_id"
 
         cursor.execute(query, tuple(params))
         return [

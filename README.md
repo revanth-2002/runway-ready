@@ -18,7 +18,6 @@
 - [System Architecture](#-system-architecture)
 - [Backend REST API Endpoints (/api/v1)](#-backend-rest-api-endpoints-apiv1)
 - [The 4 Essential Airline Dashboard Workspaces](#-the-4-essential-airline-dashboard-workspaces)
-- [Project Directory Structure](#-project-directory-structure)
 - [Prerequisites & Requirements](#-prerequisites--requirements)
 - [Quickstart & Setup Guide](#-quickstart--setup-guide)
 - [Running the REST API Microservice](#-running-the-rest-api-microservice)

@@ -203,9 +203,14 @@ class ApiClient:
         return self._request("GET", f"/api/v1/stations/{station_code.upper()}")
 
     # 3. Workspace 2: Disruption Simulation & Finalize
-    def simulate_disruption(self, query: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def simulate_disruption(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]] = None,
+        offline_mode: bool = False,
+    ) -> Dict[str, Any]:
         """POST /api/v1/disruptions/simulate"""
-        payload = {"query": query, "context": context or {}}
+        payload = {"query": query, "context": context or {}, "offline_mode": offline_mode}
         data = self._request("POST", "/api/v1/disruptions/simulate", json=payload)
 
         # Enrich raw payload with UI-friendly objects

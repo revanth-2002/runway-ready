@@ -36,7 +36,7 @@ from advisor.api.schemas import (
 from advisor.audit.logger import StructuredLogger, append_audit_event
 from advisor.data.repository import OpsRepository, DEFAULT_DB_PATH
 from advisor.domain.state import OpsState, Overlay
-from advisor.llm.client import get_active_llm_info
+from advisor.llm.client import get_active_llm_info, StubClient
 from advisor.orchestrator.runner import orchestrate
 from advisor.twin.warm import warm_operational_digital_twin, DEFAULT_STATIONS
 
@@ -143,7 +143,7 @@ def get_network_overview() -> NetworkOverviewResponse:
     total_avail_reserves = 0
 
     for stn in DEFAULT_STATIONS:
-        raw_reserves = twin_manager.repo.list_reserves(base=stn)
+        raw_reserves = twin_manager.repo.list_reserves(base=stn, distinct_crew=True)
         avail = 0
         for r in raw_reserves:
             # Check if reserve crew is affected by overlays
@@ -325,7 +325,7 @@ def get_station_details(station_code: str) -> StationDetailResponse:
     on_time_cnt = sum(1 for m in all_movements if m.status == "ON_TIME")
     on_time_pct = round((on_time_cnt / total_movements_cnt * 100) if total_movements_cnt > 0 else 100.0, 1)
 
-    raw_reserves = twin_manager.repo.list_reserves(base=code)
+    raw_reserves = twin_manager.repo.list_reserves(base=code, distinct_crew=True)
 
     return StationDetailResponse(
         station_code=code,
@@ -357,12 +357,24 @@ def simulate_disruption(req: DisruptionSimulateRequest) -> DisruptionSimulateRes
     if not query:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Directive query cannot be empty.")
 
-    events = list(orchestrate(query, twin_manager.state, twin_manager.repo))
+    llm_client = StubClient() if req.offline_mode else None
+    events = list(orchestrate(query, twin_manager.state, twin_manager.repo, client=llm_client))
 
     abstain_event = next((p for s, p in events if s == "abstain"), None)
+    clarify_event = next((p for s, p in events if s == "clarify"), None)
     evidence_payload = next((p for s, p in events if s == "evidence"), {})
     options_payload = next((p for s, p in events if s == "options"), None)
     prose_payload = next((p for s, p in events if s == "prose"), None)
+
+    if clarify_event:
+        return DisruptionSimulateResponse(
+            status="clarification_needed",
+            query=query,
+            abstained=True,
+            abstain_reason="CLARIFICATION_REQUIRED",
+            abstain_message=clarify_event.get("message", "Please clarify operational parameters."),
+            prose_summary=f"❓ **Clarification Needed:** {clarify_event.get('message')}",
+        )
 
     if abstain_event:
         return DisruptionSimulateResponse(
@@ -550,12 +562,19 @@ def list_reserves(
 ) -> ReserveListResponse:
     """Returns standby crew members at a given station reflecting live twin overlay states."""
     twin_view = twin_manager.state.materialize()
-    raw_reserves = twin_manager.repo.list_reserves(base=station.upper())
+    raw_reserves = twin_manager.repo.list_reserves(base=station.upper(), date="2026-09-15")
+    if not raw_reserves:
+        raw_reserves = twin_manager.repo.list_reserves(base=station.upper(), distinct_crew=True)
 
     results: List[ReserveItemSchema] = []
     available_count = 0
+    seen_cids = set()
 
     for r in raw_reserves:
+        if r.crew_id in seen_cids:
+            continue
+        seen_cids.add(r.crew_id)
+
         c = twin_manager.repo.get_crew(r.crew_id)
         if not c:
             continue
