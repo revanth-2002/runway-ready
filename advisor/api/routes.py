@@ -774,3 +774,51 @@ def reset_baseline() -> TwinActionResponse:
         active_overlays_count=0,
         timestamp=now_str,
     )
+
+
+# -------------------------------------------------------------------------
+# Voice Agent (Sarvam AI STT & TTS)
+# -------------------------------------------------------------------------
+
+from pydantic import BaseModel
+
+
+class VoiceSynthesizeRequest(BaseModel):
+    text: str
+    speaker: str = "meera"
+    language_code: str = "en-IN"
+
+
+class VoiceSynthesizeResponse(BaseModel):
+    success: bool
+    audio_base64: str
+    speaker: str
+    message: str
+
+
+@router.post("/voice/synthesize", response_model=VoiceSynthesizeResponse)
+def synthesize_voice(req: VoiceSynthesizeRequest) -> VoiceSynthesizeResponse:
+    """Converts operational text into natural spoken audio using Sarvam AI Bulbul TTS."""
+    import base64
+    from advisor.voice.sarvam import get_sarvam_client
+
+    client = get_sarvam_client()
+    if not client.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sarvam AI API key is not configured. Please set SARVAM_API_KEY.",
+        )
+    try:
+        wav_bytes = client.synthesize(
+            req.text, speaker=req.speaker, target_language_code=req.language_code
+        )
+        b64_str = base64.b64encode(wav_bytes).decode("utf-8")
+        return VoiceSynthesizeResponse(
+            success=True,
+            audio_base64=b64_str,
+            speaker=req.speaker,
+            message="Speech synthesized successfully via Sarvam AI.",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+

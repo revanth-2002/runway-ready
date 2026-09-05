@@ -31,18 +31,21 @@ import ui.components.cards
 import ui.components.gantt
 import ui.components.ledger
 import ui.components.reserves
+import ui.components.voice_agent
 
 importlib.reload(ui.components.airport)
 importlib.reload(ui.components.cards)
 importlib.reload(ui.components.gantt)
 importlib.reload(ui.components.ledger)
 importlib.reload(ui.components.reserves)
+importlib.reload(ui.components.voice_agent)
 
 from ui.components.airport import render_airport_hub
 from ui.components.cards import render_option_cards
 from ui.components.gantt import render_gantt_diff
 from ui.components.ledger import render_ledger_table
 from ui.components.reserves import render_reserve_board
+from ui.components.voice_agent import render_voice_agent_cockpit, synthesize_and_play_response
 
 logger = StructuredLogger("ui.app")
 
@@ -710,6 +713,7 @@ WORKSPACE_TABS = [
     "🌐 Network Overview",
     "📍 Airport Hubs (BLR, DEL...)",
     "🚨 Disruption Cockpit",
+    "🎙️ Voice Agent (Sarvam AI)",
     "👥 Standby Roster",
     "✈️ Fleet & Schedule",
 ]
@@ -1111,6 +1115,12 @@ elif active_tab == "🚨 Disruption Cockpit":
                     )
                     if msg.get("content"):
                         st.markdown(msg["content"])
+                        v_btn_col, _ = st.columns([1.5, 4.5])
+                        with v_btn_col:
+                            if st.button("🔊 Listen (Sarvam TTS)", key=f"speak_btn_{msg_idx}", use_container_width=True):
+                                synthesize_and_play_response(msg["content"])
+                                if st.session_state.get("sarvam_last_audio"):
+                                    st.audio(st.session_state.sarvam_last_audio, format="audio/wav", autoplay=True)
 
                     # Recovery option cards: only shown when user explicitly opted in
                     msg_options = msg.get("options")
@@ -1206,6 +1216,18 @@ elif active_tab == "🚨 Disruption Cockpit":
             st.session_state.active_query = typed_directive.strip()
             st.session_state.directive_input_field = typed_directive.strip()
             st.rerun()
+
+
+# -------------------------------------------------------------------------
+# WORKSPACE: Sarvam AI Voice Agent
+# -------------------------------------------------------------------------
+elif active_tab == "🎙️ Voice Agent (Sarvam AI)":
+    def handle_voice_directive_submit(query_text: str):
+        _trigger_scenario(query_text)
+        st.session_state.active_tab = "🚨 Disruption Cockpit"
+        st.rerun()
+
+    render_voice_agent_cockpit(on_query_submit=handle_voice_directive_submit)
 
 
 # -------------------------------------------------------------------------
