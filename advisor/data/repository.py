@@ -545,7 +545,7 @@ class OpsRepository:
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT a.crew_id, c.name, c.rank
+            """SELECT a.crew_id, c.name, c.rank, a.role
                FROM assignment a
                JOIN crew c ON a.crew_id = c.crew_id
                WHERE a.pairing_id = ?

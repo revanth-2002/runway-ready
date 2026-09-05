@@ -36,14 +36,19 @@ def should_abstain(
     # 3. Entity existence check
     crew_ids = intent.entities.get("crew_ids", [])
     for cid in crew_ids:
-        if not repo.find_crew(cid):
+        if str(cid).startswith("UNKNOWN:"):
+            name = str(cid).replace("UNKNOWN:", "")
+            msg = f"Crew member '{name}' does not exist in roster records."
+            logger.warning("Abstention gate triggered: unknown crew entity", reason="UNKNOWN_ENTITY", crew_name=name)
+            return (AbstainReason.UNKNOWN_ENTITY, msg)
+        elif not repo.find_crew(str(cid)):
             msg = f"Crew member {cid} does not exist in roster records."
             logger.warning("Abstention gate triggered: unknown crew entity", reason="UNKNOWN_ENTITY", crew_id=cid)
             return (AbstainReason.UNKNOWN_ENTITY, msg)
 
     flight_ids = intent.entities.get("flight_ids", [])
     for fid in flight_ids:
-        if not repo.find_flight(fid):
+        if not repo.find_flight(str(fid)):
             msg = f"Flight {fid} is not present in active flight schedules."
             logger.warning("Abstention gate triggered: unknown flight entity", reason="UNKNOWN_ENTITY", flight_id=fid)
             return (AbstainReason.UNKNOWN_ENTITY, msg)
