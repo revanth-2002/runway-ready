@@ -145,46 +145,100 @@ def orchestrate(
         yield ("status", f"Allocating Tool: lookup_reserves at station {station}...")
         res = tool_lookup_reserves(repo, state, station=station, date=date)
 
-        prose = (
-            f"**Active Reserves at {station} ({date}):**\n"
-            + ("\n".join(res["crew_items"]) if res["crew_items"] else f"No active reserves scheduled at {station}.")
-        )
+        details = res.get("reserve_details", [])
+        if not details:
+            prose = f"⚠️ No active standby reserves scheduled at station **{station}** on {date}."
+        else:
+            table_rows = []
+            for r in details:
+                c_id = r["crew_id"]
+                name = r["name"]
+                rank = r["rank"]
+                win = f"{r['oncall_start_utc'][11:16]}–{r['oncall_end_utc'][11:16]}Z"
+                status = "🟢 STANDBY" if r["standby_status"] == "STANDBY" else f"🟡 {r['standby_status']}"
+                table_rows.append(f"| `{c_id}` | **{name}** | {rank} | `{win}` | {status} |")
+
+            prose = (
+                f"### 👥 Active Standby Reserves: {station} (`{date}`)\n\n"
+                f"| Crew ID | Name | Role | On-Call Window (UTC) | Status |\n"
+                f"|---|---|---|---|---|\n"
+                + "\n".join(table_rows)
+                + f"\n\n*Total: **{len(details)}** crew members currently available on standby at **{station}**.*"
+            )
         yield ("evidence", res)
         yield ("prose", prose)
-        append_audit_event("LOOKUP_RESERVES", {"station": station, "count": len(res["reserves"])})
+        append_audit_event("LOOKUP_RESERVES", {"station": station, "count": len(details)}, request_id=request_id)
         return
 
     # 6. Tool: Lookup Flights
     if intent_bundle.intent == "lookup_flights":
         orig = intent_bundle.entities.get("origin")
         dest = intent_bundle.entities.get("destination")
-        dt = intent_bundle.entities.get("date")
+        dt = intent_bundle.entities.get("date", "2026-09-15")
+        if len(dt) > 10:
+            dt = dt[:10]
+        time_win = intent_bundle.entities.get("time_window") or intent_bundle.entities.get("period")
+        
         yield ("status", f"Allocating Tool: lookup_flights ({orig} ➔ {dest or 'all'} on {dt})...")
         flights = repo.list_flights_by_station(origin=orig, destination=dest, date=dt)
         f_nos = [f["flight_no"] for f in flights]
-        prose = (
-            f"**Flights departing {orig}{' for ' + dest if dest else ''} on {dt}:**\n"
-            + ("\n".join(f"• **{f['flight_no']}** ({f['flight_id']}): {f['dep_utc'][11:16]}Z → {f['arr_utc'][11:16]}Z ({f['origin']}→{f['destination']})" for f in flights) if flights else "No flights found.")
-        )
+        if not flights:
+            prose = f"⚠️ No flights found departing **{orig}**{' for **' + dest + '**' if dest else ''} on `{dt}`."
+        else:
+            table_rows = []
+            for f in flights:
+                dep_utc_str = f['dep_utc'][11:16]
+                arr_utc_str = f['arr_utc'][11:16]
+                try:
+                    dep_h, dep_m = map(int, dep_utc_str.split(':'))
+                    arr_h, arr_m = map(int, arr_utc_str.split(':'))
+                    ist_dep_h = (dep_h + 5 + (dep_m + 30) // 60) % 24
+                    ist_dep_m = (dep_m + 30) % 60
+                    ist_arr_h = (arr_h + 5 + (arr_m + 30) // 60) % 24
+                    ist_arr_m = (arr_m + 30) % 60
+                    dep_display = f"`{dep_utc_str}Z` ({ist_dep_h:02d}:{ist_dep_m:02d} IST)"
+                    arr_display = f"`{arr_utc_str}Z` ({ist_arr_h:02d}:{ist_arr_m:02d} IST)"
+                except Exception:
+                    dep_display = f"`{dep_utc_str}Z`"
+                    arr_display = f"`{arr_utc_str}Z`"
+
+                table_rows.append(f"| `{f['flight_no']}` | `{f['flight_id']}` | `{f['origin']} ➔ {f['destination']}` | {dep_display} | {arr_display} | `{f['tail_id']}` ({f['aircraft_type']}) |")
+
+            time_sub = f" (Window: {time_win})" if time_win else ""
+            header = f"### ✈️ Flight Schedule: {orig}{' ➔ ' + dest if dest else ' Departures'} (`{dt}`{time_sub})\n\n"
+            table_head = "| Flight | Flight ID | Route | Departure (UTC / IST) | Arrival (UTC / IST) | Tail / Type |\n|---|---|---|---|---|---|\n"
+            prose = header + table_head + "\n".join(table_rows) + f"\n\n*Total: **{len(flights)}** flights operating on `{dt}`.*"
+
         yield ("evidence", {"flights": flights, "flight_numbers": f_nos})
         yield ("prose", prose)
-        append_audit_event("LOOKUP_FLIGHTS", {"origin": orig, "destination": dest, "date": dt, "count": len(flights)})
+        append_audit_event("LOOKUP_FLIGHTS", {"origin": orig, "destination": dest, "date": dt, "count": len(flights)}, request_id=request_id)
         return
 
     # 7. Tool: Lookup Expiring Certifications
     if intent_bundle.intent == "lookup_expiring_certs":
         days = intent_bundle.entities.get("within_days", 30)
         ref_date = intent_bundle.entities.get("reference_date", "2026-09-15")
-        yield ("status", f"Allocating Tool: lookup_expiring_certs ({days} days from {ref_date})...")
-        certs = repo.list_expiring_certifications(within_days=days, reference_date=ref_date)
-        lines = [f"• **{c['crew_id']}** — {c['cert_type']} (expires {c['expires_on']})" for c in certs]
-        prose = (
-            f"**Certifications Expiring Within {days} Days of {ref_date}:**\n"
-            + ("\n".join(lines) if lines else "No certifications expiring within this window.")
-        )
+        base = intent_bundle.entities.get("base") or intent_bundle.entities.get("station")
+        cert_type = intent_bundle.entities.get("cert_type")
+
+        scope_str = f" for {base}" if base else " Fleet-wide"
+        yield ("status", f"Allocating Tool: lookup_expiring_certs ({days} days from {ref_date}{scope_str})...")
+        certs = repo.list_expiring_certifications(within_days=days, reference_date=ref_date, base=base, cert_type=cert_type)
+        if not certs:
+            prose = f"✅ No crew certifications expiring within **{days} days** of `{ref_date}`{f' for base **{base}**' if base else ''}."
+        else:
+            table_rows = [f"| `{c['crew_id']}` | **{c.get('name', 'Crew')}** | {c.get('rank', 'Crew')} | `{c.get('base', 'BLR')}` | `{c['cert_type']}` | `{c['expires_on']}` |" for c in certs]
+            scope_title = f"{base} Base" if base else "Fleet-wide Network"
+            prose = (
+                f"### ⚠️ Certifications Expiring Within {days} Days ({scope_title}, Ref: `{ref_date}`)\n\n"
+                f"| Crew ID | Name | Rank | Base | Certification Type | Expiry Date |\n"
+                f"|---|---|---|---|---|---|\n"
+                + "\n".join(table_rows)
+                + f"\n\n*Total: **{len(certs)}** certifications requiring renewal.*"
+            )
         yield ("evidence", {"expiring_certifications": certs})
         yield ("prose", prose)
-        append_audit_event("LOOKUP_EXPIRING_CERTS", {"days": days, "count": len(certs)})
+        append_audit_event("LOOKUP_EXPIRING_CERTS", {"days": days, "base": base, "cert_type": cert_type, "count": len(certs)}, request_id=request_id)
         return
 
     # 8. Tool: Lookup Pairing Crew
@@ -192,14 +246,20 @@ def orchestrate(
         p_id = intent_bundle.entities.get("pairing_id", "P-2291")
         yield ("status", f"Allocating Tool: lookup_pairing_crew ({p_id})...")
         crew_assigns = repo.get_pairing_assignments(p_id)
-        lines = [f"• **{ca['crew_id']} ({ca['name']})** — {ca['rank']}" for ca in crew_assigns]
-        prose = (
-            f"**Crew Assigned to Pairing {p_id}:**\n"
-            + ("\n".join(lines) if lines else f"No crew assigned to pairing {p_id}.")
-        )
+        if not crew_assigns:
+            prose = f"⚠️ No crew members assigned to pairing `{p_id}`."
+        else:
+            table_rows = [f"| `{ca['crew_id']}` | **{ca['name']}** | {ca['rank']} | {ca.get('role', ca['rank'])} |" for ca in crew_assigns]
+            prose = (
+                f"### 👥 Crew Assigned to Pairing `{p_id}`\n\n"
+                f"| Crew ID | Name | Rank | Assigned Role |\n"
+                f"|---|---|---|---|\n"
+                + "\n".join(table_rows)
+                + f"\n\n*Total: **{len(crew_assigns)}** crew members rostered on pairing `{p_id}`.*"
+            )
         yield ("evidence", {"pairing_id": p_id, "assignments": crew_assigns})
         yield ("prose", prose)
-        append_audit_event("LOOKUP_PAIRING_CREW", {"pairing_id": p_id, "count": len(crew_assigns)})
+        append_audit_event("LOOKUP_PAIRING_CREW", {"pairing_id": p_id, "count": len(crew_assigns)}, request_id=request_id)
         return
 
     # 9. Tool: Lookup Nonstop Destinations
@@ -207,13 +267,16 @@ def orchestrate(
         stn = intent_bundle.entities.get("station", "BLR")
         yield ("status", f"Allocating Tool: lookup_nonstop_destinations from {stn}...")
         dests = repo.list_nonstop_destinations(stn)
+        dest_str = ", ".join(f"`{d}`" for d in dests) if dests else "None"
         prose = (
-            f"**Nonstop Destinations Served from {stn}:**\n"
-            + (", ".join(dests) if dests else f"No nonstop destinations found from {stn}.")
+            f"### 🌐 Nonstop Destinations Served from {stn}\n\n"
+            f"The network operates direct nonstop routes to **{len(dests)}** airport hubs:\n\n"
+            + "\n".join(f"- 🛫 **{d}**" for d in dests)
+            + f"\n\n*Total: **{len(dests)}** destinations served from `{stn}`.*"
         )
         yield ("evidence", {"station": stn, "destinations": dests})
         yield ("prose", prose)
-        append_audit_event("LOOKUP_NONSTOP_DESTINATIONS", {"station": stn, "destinations": dests})
+        append_audit_event("LOOKUP_NONSTOP_DESTINATIONS", {"station": stn, "destinations": dests}, request_id=request_id)
         return
 
     # 10. Tool: Lookup Airport Closure Impact
@@ -223,14 +286,20 @@ def orchestrate(
         end_utc = intent_bundle.entities.get("end_utc", "2026-09-17T14:00:00Z")
         yield ("status", f"Allocating Tool: lookup_closure_impact ({stn} closure {start_utc} - {end_utc})...")
         affected_flights = repo.list_flights_affected_by_closure(stn, start_utc, end_utc)
-        lines = [f"• {fid}" for fid in affected_flights]
-        prose = (
-            f"**Flights Affected by {stn} Closure ({start_utc} to {end_utc}):**\n"
-            + ("\n".join(lines) if lines else f"No flights affected by closure at {stn}.")
-        )
+        if not affected_flights:
+            prose = f"✅ No flights affected by closure at **{stn}** between `{start_utc[11:16]}Z` and `{end_utc[11:16]}Z`."
+        else:
+            table_rows = [f"| `{fid}` | `{stn}` | `GROUNDED / DELAYED` |" for fid in affected_flights]
+            prose = (
+                f"### ⚠️ Flights Affected by {stn} Closure (`{start_utc[11:16]}Z – {end_utc[11:16]}Z` on 17 Sep)\n\n"
+                f"| Flight ID | Station | Impact Status |\n"
+                f"|---|---|---|\n"
+                + "\n".join(table_rows)
+                + f"\n\n*Total: **{len(affected_flights)}** flights affected by the {stn} runway closure.*"
+            )
         yield ("evidence", {"station": stn, "start_utc": start_utc, "end_utc": end_utc, "affected_flights": affected_flights})
         yield ("prose", prose)
-        append_audit_event("LOOKUP_CLOSURE_IMPACT", {"station": stn, "count": len(affected_flights)})
+        append_audit_event("LOOKUP_CLOSURE_IMPACT", {"station": stn, "count": len(affected_flights)}, request_id=request_id)
         return
 
     # 11. Tool: Lookup Crew by Base / Working Station
@@ -241,34 +310,39 @@ def orchestrate(
         crew_list = repo.list_crew_by_base(base=base, rank=rank)
         c_ids = [c.crew_id for c in crew_list]
         twin_view = state.materialize()
-        lines = []
-        for c in crew_list:
-            twin_c = twin_view.crew.get(c.crew_id)
-            status_tag = "ACTIVE / ROSTERED"
-            if twin_c:
-                if twin_c.is_incapacitated:
-                    status_tag = "INCAPACITATED"
-                elif twin_c.assigned_pairing_id:
-                    status_tag = f"ROSTERED ({twin_c.assigned_pairing_id})"
-                elif twin_c.on_call_status:
-                    status_tag = twin_c.on_call_status
-            ratings = repo.list_ratings(c.crew_id)
-            ratings_str = f" [{', '.join(ratings)}]" if ratings else ""
-            lines.append(f"• **{c.crew_id} ({c.name})** — {c.rank}{ratings_str} ({status_tag})")
-
-        if lines:
-            prose = f"**{rank or 'Crew'} based at {base} ({len(crew_list)} total):**\n" + "\n".join(lines)
-        else:
-            # Helpful domain context: BLR and DEL are crew domicile bases; others are turnaround hubs
+        if not crew_list:
             prose = (
-                f"**{rank or 'Crew'} based at {base} (0 total):**\n"
-                f"No {rank.lower() + 's' if rank else 'crew'} are permanently based or domiciled at {base}. "
-                f"Network operations at {base} are operated via turnaround rotations and positioning crew from domicile bases (`BLR` and `DEL`)."
+                f"### 📍 {rank or 'Crew'} Based at {base} (0 Total)\n\n"
+                f"No {rank.lower() + 's' if rank else 'crew'} are permanently based or domiciled at **{base}**.\n\n"
+                f"> ℹ️ *Network operations at {base} are operated via turnaround rotations and positioning crew from domicile bases (`BLR` and `DEL`).*"
+            )
+        else:
+            table_rows = []
+            for c in crew_list:
+                twin_c = twin_view.crew.get(c.crew_id)
+                status_tag = "🟢 Active Rostered"
+                if twin_c:
+                    if twin_c.is_incapacitated:
+                        status_tag = "🔴 Incapacitated"
+                    elif twin_c.assigned_pairing_id:
+                        status_tag = f"🟡 Pairing `{twin_c.assigned_pairing_id}`"
+                    elif twin_c.on_call_status:
+                        status_tag = f"🟢 Standby ({twin_c.on_call_status})"
+                ratings = repo.list_ratings(c.crew_id)
+                ratings_str = ", ".join(ratings) if ratings else "A320"
+                table_rows.append(f"| `{c.crew_id}` | **{c.name}** | {c.rank} | `{ratings_str}` | {status_tag} |")
+
+            prose = (
+                f"### 📍 {rank or 'Crew'} Based at {base} ({len(crew_list)} Total)\n\n"
+                f"| Crew ID | Name | Rank | Ratings | Status |\n"
+                f"|---|---|---|---|---|\n"
+                + "\n".join(table_rows)
+                + f"\n\n*Total: **{len(crew_list)}** {rank.lower() if rank else 'crew'} stationed at **{base}**.*"
             )
 
         yield ("evidence", {"crew": [c.crew_id for c in crew_list], "crew_ids": c_ids, "count": len(crew_list), "base": base, "rank": rank})
         yield ("prose", prose)
-        append_audit_event("LOOKUP_CREW_BY_BASE", {"base": base, "rank": rank, "count": len(crew_list)})
+        append_audit_event("LOOKUP_CREW_BY_BASE", {"base": base, "rank": rank, "count": len(crew_list)}, request_id=request_id)
         return
 
     # 12. Tool: Lookup High Cumulative Duty Crew
@@ -276,11 +350,20 @@ def orchestrate(
         thresh = intent_bundle.entities.get("threshold", 45.0)
         yield ("status", f"Allocating Tool: lookup_high_duty_crew (>= {thresh}h in 7 days)...")
         high_crew = repo.list_high_duty_crew(threshold_hours=thresh)
-        lines = [f"• **{r['crew_id']}** — {r['duty_hours_7d']:.1f} duty hours" for r in high_crew]
-        prose = f"**Crew with >= {thresh}h cumulative duty in 7 days:**\n" + ("\n".join(lines) if lines else f"No crew with >= {thresh}h duty.")
+        if not high_crew:
+            prose = f"✅ No crew members have cumulative duty exceeding **{thresh}h** in the last 7 days."
+        else:
+            table_rows = [f"| `{r['crew_id']}` | **{r.get('name', r['crew_id'])}** | `{r['duty_hours_7d']:.1f}h` | {'⚠️ Near Limit (60.0h max)' if r['duty_hours_7d'] >= 50 else 'Active'} |" for r in high_crew]
+            prose = (
+                f"### ⚖️ High Cumulative Duty Crew: >= {thresh}h in 7 Days\n\n"
+                f"| Crew ID | Name | 7-Day Duty Hours | Risk Level |\n"
+                f"|---|---|---|---|\n"
+                + "\n".join(table_rows)
+                + f"\n\n*Total: **{len(high_crew)}** crew members tracked.*"
+            )
         yield ("evidence", {"high_duty_crew": high_crew, "crew_ids": [r["crew_id"] for r in high_crew]})
         yield ("prose", prose)
-        append_audit_event("LOOKUP_HIGH_DUTY_CREW", {"threshold": thresh, "count": len(high_crew)})
+        append_audit_event("LOOKUP_HIGH_DUTY_CREW", {"threshold": thresh, "count": len(high_crew)}, request_id=request_id)
         return
 
     # 12b. Tool: Request Recovery Options (explicit opt-in follow-up after what-if check)
@@ -571,13 +654,38 @@ System Context:
 """
     try:
         resp = client.generate(prompt, temperature=0.2)
-        if resp and len(resp.strip()) > 10:
+        if resp and len(resp.strip()) > 10 and not resp.strip().startswith("Query processed"):
             yield ("prose", resp.strip())
             return
     except Exception:
         pass
 
-    yield (
-        "prose",
-        f"**Operational Query Understood:** Received '{clean_query}'. To simulate an operational recovery, please specify a disrupted crew member, flight cancellation directive, or station lookup.",
-    )
+    # Dynamic, intent-aware response and clarifying question generator
+    q_low = clean_query.lower()
+
+    # 1. Disruption / sick / replacement intent without specific parameters
+    if any(k in q_low for k in ["sick", "replace", "disrupt", "fatigue", "incapacitated", "out for", "recovery"]):
+        clarifying_msg = "Could you please specify which crew member (e.g. `Captain A. Nair` or `C-1042`) or flight number (e.g. `DX412`) you would like to simulate recovery options for?"
+    # 2. What-if crew move / swap intent
+    elif any(k in q_low for k in ["move", "swap", "assign", "switch", "put", "transfer", "can fly"]):
+        clarifying_msg = "Could you please specify which crew member (e.g. `C-2087`) and flight (e.g. `DX412`) you would like to evaluate for legality?"
+    # 3. Legality / duty limit check intent
+    elif any(k in q_low for k in ["duty", "limit", "breach", "legal", "hours", "fdp", "rest"]):
+        clarifying_msg = "Please specify the crew member ID (e.g. `C-2087`) or flight number to evaluate against DGCA CAR Section 7 limits."
+    # 4. Standby / reserve / crew availability intent
+    elif any(k in q_low for k in ["reserve", "standby", "available", "who is", "pilots", "captains", "crew"]):
+        clarifying_msg = "Which airport station (BLR, DEL, BOM, HYD, or MAA) or specific crew member would you like to check availability for?"
+    # 5. Flight / schedule / aircraft intent
+    elif any(k in q_low for k in ["flight", "schedule", "tail", "aircraft", "rotations", "plane"]):
+        clarifying_msg = "Which flight number (e.g. `DX412`), aircraft tail (e.g. `VT-DXA`), or station route would you like to inspect?"
+    # 6. Cancellation intent
+    elif "cancel" in q_low:
+        clarifying_msg = "Which station (e.g. `BLR`, `DEL`) and date would you like to simulate cancellations for?"
+    # 7. Greetings / general help
+    elif any(k in q_low for k in ["hello", "hi", "hey", "help", "what can you do"]):
+        clarifying_msg = "Hello! I am your AI Operations Co-Pilot. You can evaluate crew duty legalities, check standby reserves across stations (BLR, DEL, BOM, HYD, MAA), simulate disruption recoveries, or inspect aircraft flight schedules. How can I assist you?"
+    # 8. General open fallback
+    else:
+        clarifying_msg = "Could you please specify the flight number (e.g. `DX412`), crew ID (e.g. `C-1042`), or airport station (BLR, DEL, BOM, HYD, MAA) you would like to evaluate?"
+
+    yield ("prose", clarifying_msg)
