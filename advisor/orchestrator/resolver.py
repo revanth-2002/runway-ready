@@ -109,9 +109,10 @@ def resolve_local_pii(
             if unknown_token not in resolved_crew_ids:
                 resolved_crew_ids.append(unknown_token)
 
-    # 4. Normalize relative dates
-    sanitized = re.sub(r"\btomorrow\b", "2026-09-15", sanitized, flags=re.IGNORECASE)
-    sanitized = re.sub(r"\btoday\b", "2026-09-14", sanitized, flags=re.IGNORECASE)
+    # 4. Normalize relative dates relative to reference snapshot (2026-09-15)
+    sanitized = re.sub(r"\btoday\b", "2026-09-15", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"\btomorrow\b", "2026-09-16", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"\byesterday\b", "2026-09-14", sanitized, flags=re.IGNORECASE)
 
     logger.info(
         "Resolved local entities and sanitized PII",

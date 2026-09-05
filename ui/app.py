@@ -241,14 +241,15 @@ st.markdown(
         background: #1e293b;
         border: 1px solid rgba(255, 255, 255, 0.16);
         border-radius: 10px;
-        padding: 16px 20px;
-        margin-bottom: 16px;
+        padding: 14px 18px;
+        margin-bottom: 12px;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     }
     .response-header-title {
-        font-size: 17px;
+        font-size: 15px;
         font-weight: 700;
         color: #38bdf8;
         letter-spacing: 0.3px;
@@ -256,86 +257,7 @@ st.markdown(
         align-items: center;
         gap: 8px;
     }
-    .response-header-count {
-        background: #0284c7;
-        color: #ffffff;
-        font-size: 12px;
-        font-weight: 700;
-        padding: 4px 10px;
-        border-radius: 9999px;
-    }
-    .aligned-item-card {
-        background: #1e293b;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 8px;
-        padding: 12px 16px;
-        margin-bottom: 10px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        transition: border-color 0.15s ease-in-out;
-    }
-    .aligned-item-card:hover {
-        border-color: rgba(56, 189, 248, 0.4);
-    }
-    .aligned-item-left {
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-    }
-    .aligned-item-name {
-        font-size: 14.5px;
-        font-weight: 700;
-        color: #f8fafc;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    .aligned-item-code {
-        color: #38bdf8;
-        font-family: monospace;
-        font-weight: 600;
-    }
-    .aligned-item-subtitle {
-        font-size: 12px;
-        color: #94a3b8;
-    }
-    .aligned-item-right {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    .aligned-status-badge {
-        font-size: 11.5px;
-        font-weight: 700;
-        padding: 4px 9px;
-        border-radius: 6px;
-        letter-spacing: 0.3px;
-        text-transform: uppercase;
-    }
-    .status-badge-green {
-        background: rgba(16, 185, 129, 0.15);
-        color: #34d399;
-        border: 1px solid rgba(16, 185, 129, 0.35);
-    }
-    .status-badge-amber {
-        background: rgba(245, 158, 11, 0.15);
-        color: #fbbf24;
-        border: 1px solid rgba(245, 158, 11, 0.35);
-    }
-    .status-badge-red {
-        background: rgba(239, 68, 68, 0.15);
-        color: #f87171;
-        border: 1px solid rgba(239, 68, 68, 0.35);
-    }
-    .aligned-prose-container {
-        background: #1e293b;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 10px;
-        padding: 18px 22px;
-        margin-bottom: 20px;
-        line-height: 1.6;
-    }
+
 
     /* Command prompt input field styling */
     div[data-testid="stTextInput"] input {
@@ -448,7 +370,7 @@ with st.sidebar:
         now_str = datetime.now(timezone.utc).strftime("%H:%M:%SZ")
         st.session_state.active_query = query
         st.session_state.selected_query = query
-        st.session_state.directive_input_field = query
+        st.session_state.directive_input_field = ""
         st.session_state.nav_target = "🚨 Disruption Cockpit"
         st.session_state.last_finalized = None
         st.session_state.input_history.insert(0, query)
@@ -527,173 +449,7 @@ with st.sidebar:
         st.info("**Offline Stub**\n\nDeterministic sandbox mode\n\n*(Set `GEMINI_API_KEY` in `.env`)*")
 
 
-def render_aligned_prose(prose_text: str) -> None:
-    """Renders operational responses in an aligned, structured, and legible presentation.
-    
-    Transforms unaligned inline bullet text or raw lists into structured, high-visibility 
-    aviation decision cards with status badges and clean typography.
-    """
-    if not prose_text:
-        return
 
-    # Normalize carriage returns and unicode bullets
-    text = prose_text.replace("\r\n", "\n").replace("\r", "\n")
-    
-    # Check if this is an Active Reserves list or Crew Based / Working list
-    if "Active Reserves at" in text or "based at" in text:
-        parts = text.split("\n", 1)
-        header_line = parts[0].strip().strip("*").rstrip(":")
-        body_text = parts[1] if len(parts) > 1 else ""
-        
-        # Split individual lines
-        raw_items = []
-        tokens = [t.strip() for t in body_text.replace("•", "\n•").split("\n") if t.strip()]
-        for tok in tokens:
-            cleaned = tok.lstrip("•").strip()
-            if cleaned:
-                raw_items.append(cleaned)
-
-        count_label = f"{len(raw_items)} Crew" if "based" in header_line.lower() else f"{len(raw_items)} On-Call"
-        
-        st.markdown(
-            f"""
-            <div class="response-header-card">
-                <div class="response-header-title">
-                    <span>👥</span> {header_line}
-                </div>
-                <div class="response-header-count">{count_label}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        
-        if not raw_items or (len(raw_items) == 1 and "permanently based" in raw_items[0]):
-            # Informational notice when 0 crew are domiciled at an outstation
-            notice_msg = raw_items[0] if raw_items else body_text
-            st.markdown(
-                f"""
-                <div class="aligned-item-card" style="padding: 16px;">
-                    <div class="aligned-item-left">
-                        <div class="aligned-item-name">
-                            <span>ℹ️</span> Operational Base Notice
-                        </div>
-                        <div class="aligned-item-subtitle" style="font-size: 13px; color: #cbd5e1; margin-top: 4px; line-height: 1.5;">
-                            {notice_msg}
-                        </div>
-                    </div>
-                    <div class="aligned-item-right">
-                        <span class="aligned-status-badge status-badge-amber">TURNAROUND HUB</span>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            return
-
-        for item in raw_items:
-            # Typical format: C-3305 (V. Menon) — Captain [A320] (ROSTERED (P-2203))
-            badge_class = "status-badge-green"
-            badge_text = "AVAILABLE"
-            if "INCAPACITATED" in item:
-                badge_class = "status-badge-red"
-                badge_text = "INCAPACITATED"
-            elif "CALLED" in item or "ROSTERED" in item:
-                badge_class = "status-badge-amber"
-                badge_text = "ROSTERED" if "ROSTERED" in item else "CALLED"
-            elif "STANDBY" in item:
-                badge_class = "status-badge-green"
-                badge_text = "STANDBY"
-            
-            # Clean display string
-            display_item = item.replace("**", "").replace("`", "")
-            
-            # Extract crew title and details if delimited by dash
-            if "—" in display_item or " - " in display_item:
-                delim = "—" if "—" in display_item else " - "
-                crew_part, duty_part = display_item.split(delim, 1)
-                crew_part = crew_part.strip()
-                duty_part = duty_part.strip()
-            else:
-                crew_part = display_item
-                duty_part = ""
-            
-            # Separate out status tag in parentheses from duty_part
-            if "(" in duty_part and ")" in duty_part and any(s in duty_part for s in ["STANDBY", "AVAILABLE", "CALLED", "INCAPACITATED"]):
-                main_duty = duty_part[:duty_part.rfind("(")].strip()
-            else:
-                main_duty = duty_part
-
-            st.markdown(
-                f"""
-                <div class="aligned-item-card">
-                    <div class="aligned-item-left">
-                        <div class="aligned-item-name">
-                            <span>👨‍✈️</span> {crew_part}
-                        </div>
-                        <div class="aligned-item-subtitle">{main_duty}</div>
-                    </div>
-                    <div class="aligned-item-right">
-                        <span class="aligned-status-badge {badge_class}">{badge_text}</span>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        return
-
-    # Check if this is a Flights Lookup list
-    if "Flights departing" in text or "departing" in text and "→" in text:
-        parts = text.split("\n", 1)
-        header_line = parts[0].strip().strip("*").rstrip(":")
-        body_text = parts[1] if len(parts) > 1 else ""
-        
-        raw_items = []
-        tokens = [t.strip() for t in body_text.replace("•", "\n•").split("\n") if t.strip()]
-        for tok in tokens:
-            cleaned = tok.lstrip("•").strip()
-            if cleaned:
-                raw_items.append(cleaned)
-                
-        st.markdown(
-            f"""
-            <div class="response-header-card">
-                <div class="response-header-title">
-                    <span>✈️</span> {header_line}
-                </div>
-                <div class="response-header-count">{len(raw_items)} Flights</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        
-        for item in raw_items:
-            display_item = item.replace("**", "").replace("`", "")
-            st.markdown(
-                f"""
-                <div class="aligned-item-card">
-                    <div class="aligned-item-left">
-                        <div class="aligned-item-name">
-                            <span>🛫</span> {display_item}
-                        </div>
-                    </div>
-                    <div class="aligned-item-right">
-                        <span class="aligned-status-badge status-badge-green">SCHEDULED</span>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        return
-
-    # Fallback for structured prose or markdown
-    st.markdown(
-        f"""
-        <div class="aligned-prose-container">
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(text)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 
@@ -943,6 +699,9 @@ elif active_tab == "🚨 Disruption Cockpit":
         curr_query = active_query.strip()
         st.session_state.selected_query = ""
         st.session_state.active_query = ""
+        st.session_state.directive_input_field = ""
+        if "directive_input_widget" in st.session_state:
+            st.session_state["directive_input_widget"] = ""
 
         # Add user message
         st.session_state.cockpit_messages.append({
@@ -956,7 +715,8 @@ elif active_tab == "🚨 Disruption Cockpit":
 
         try:
             is_offline = st.session_state.get("offline_sandbox_mode", False)
-            sim_res = api_client.simulate_disruption(curr_query, offline_mode=is_offline)
+            with st.spinner("⚡ Autonomous Operations AI Co-Pilot analyzing flight schedules, legalities & recovery solutions..."):
+                sim_res = api_client.simulate_disruption(curr_query, offline_mode=is_offline)
         except Exception as err:
             sim_res = None
             st.session_state.cockpit_messages.append({
@@ -974,18 +734,15 @@ elif active_tab == "🚨 Disruption Cockpit":
             if sim_res.get("abstained"):
                 reason = sim_res.get("abstain_reason", "NOTICE")
                 msg = sim_res.get("abstain_message", "Operational parameters need clarification.")
-                action_chips = [
-                    {"label": "🔍 Available Reserves (BLR)", "query": "Who is on reserve at BLR tomorrow?"},
-                    {"label": "✈️ Flight Schedule (DEL)", "query": "Which flights depart DEL on 2026-09-15?"},
-                ]
                 st.session_state.cockpit_messages.append({
                     "id": f"msg_assistant_abs_{len(st.session_state.cockpit_messages)}",
                     "role": "assistant",
                     "content": f"⚠️ **Operational Notice ({reason}):**\n\n{msg}",
+                    "abstained": True,
                     "options": None,
                     "ledger": None,
                     "twin_view": None,
-                    "action_chips": action_chips,
+                    "action_chips": [],
                     "time": now_ts,
                 })
             else:
@@ -1005,15 +762,22 @@ elif active_tab == "🚨 Disruption Cockpit":
                 flight_m = re.search(r"\b(DX\d{3,4})\b", curr_query, re.IGNORECASE)
                 target_fid = flight_m.group(1).upper() if flight_m else "DX412"
 
-                # Determine intent type: what-if check vs already showing options
-                is_whatif_check = (
-                    "move" in q_low or "put" in q_low or "assign" in q_low
-                    or "duty limit" in q_low or "breach" in q_low
-                    or "can " in q_low
-                ) and not ("recovery options" in q_low or "produce recovery" in q_low)
+                is_whatif_check = any(w in q_low for w in ["what if", "what-if", "if i ", "if we ", "does anyone breach", "breach", "can c-", "can captain", "can fo", "legally cover", "replace the captain", "replace the fo"])
+
+                # Determine if the co-pilot is asking a clarifying question
+                is_clarifying_prompt = bool(prose) and (
+                    "?" in prose
+                    or "specify" in prose.lower()
+                    or "clarif" in prose.lower()
+                    or "which airport" in prose.lower()
+                    or "which flight" in prose.lower()
+                    or "could you please" in prose.lower()
+                )
 
                 action_chips = []
-                if is_whatif_check:
+                if is_clarifying_prompt:
+                    action_chips = []
+                elif is_whatif_check:
                     # Encode the displaced crew from the API response into the chip query
                     # so runner.py can look them up without hallucinating a sick disruption
                     displaced_from_evidence = disrupted_crew_id  # from prior what-if eval_res
@@ -1021,24 +785,19 @@ elif active_tab == "🚨 Disruption Cockpit":
                     action_chips = [
                         {"label": f"⚡ Generate Recovery Options for {target_fid}", "query": f"produce recovery options for {target_fid}{displaced_tag}"},
                         {"label": f"👥 Who is assigned to flight {target_fid}?", "query": f"Which crews are affected if I replace the captain on {target_fid}?"},
-                        {"label": "📋 Check Reserve Availability", "query": f"Who is on reserve at BLR tomorrow?"},
                     ]
                 elif options:
-                    # Already showing recovery options — no need for another recovery chip
+                    # Already showing recovery options — provide contextual follow-up
                     action_chips = [
                         {"label": "🔍 Check Standby Strength (BLR)", "query": "Who is on reserve at BLR tomorrow?"},
                         {"label": "✈️ Review Aircraft Rotations", "query": f"Which aircraft operates {target_fid} on 2026-09-15?"},
-                    ]
-                else:
-                    action_chips = [
-                        {"label": "⚖️ Check High-Duty Crew", "query": "Which crew have 45 or more duty hours in the 7 days?"},
-                        {"label": "🔍 Active Reserves at BLR", "query": "Who is on reserve at BLR tomorrow?"},
                     ]
 
                 st.session_state.cockpit_messages.append({
                     "id": f"msg_assistant_{len(st.session_state.cockpit_messages)}",
                     "role": "assistant",
                     "content": prose,
+                    "is_clarifying": is_clarifying_prompt,
                     "options": options,
                     # Options are hidden by default; user must click to expand them
                     "show_options": False if is_whatif_check else bool(options),
@@ -1091,51 +850,36 @@ elif active_tab == "🚨 Disruption Cockpit":
         else:
             for msg_idx, msg in enumerate(messages):
                 if msg["role"] == "user":
-                    st.markdown(
-                        f"""
-                        <div style="background: rgba(30, 41, 59, 0.7); border-left: 4px solid #38bdf8; padding: 12px 16px; border-radius: 6px; margin-bottom: 12px;">
-                            <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px; font-weight: 600;">👨‍✈️ OPERATIONS CONTROLLER &bull; {msg.get('time', '')}</div>
-                            <div style="font-size: 0.95rem; color: #f8fafc; font-weight: 500;">{msg['content']}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown(
-                        f"""
-                        <div style="background: rgba(15, 23, 42, 0.9); border-left: 4px solid #10b981; padding: 14px 18px; border-radius: 6px; margin-bottom: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
-                            <div style="font-size: 0.75rem; color: #34d399; margin-bottom: 6px; font-weight: 700; letter-spacing: 0.5px;">🤖 AI OPERATIONS ADVISOR &bull; {msg.get('time', '')}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                    if msg.get("content"):
+                    with st.chat_message("user", avatar="👨‍✈️"):
                         st.markdown(msg["content"])
+                else:
+                    with st.chat_message("assistant", avatar="✈️"):
+                        if msg.get("content"):
+                            st.markdown(msg["content"])
 
-                    # Recovery option cards: only shown when user explicitly opted in
-                    msg_options = msg.get("options")
-                    show_opts = msg.get("show_options", bool(msg_options))
-                    if msg_options:
-                        if show_opts:
-                            render_option_cards(msg_options, None, on_finalize=lambda opt, ev=msg.get("evidence"): handle_finalize(opt, ev), key_prefix=f"msg_opt_{msg_idx}")
-                        else:
-                            with st.expander(f"📋 View {len(msg_options)} Recovery Options (click to expand)", expanded=False):
-                                render_option_cards(msg_options, None, on_finalize=lambda opt, ev=msg.get("evidence"): handle_finalize(opt, ev), key_prefix=f"msg_opt_exp_{msg_idx}")
+                        # Recovery option cards: only shown when user explicitly opted in
+                        msg_options = msg.get("options")
+                        show_opts = msg.get("show_options", bool(msg_options))
+                        if msg_options:
+                            if show_opts:
+                                render_option_cards(msg_options, None, on_finalize=lambda opt, ev=msg.get("evidence"): handle_finalize(opt, ev), key_prefix=f"msg_opt_{msg_idx}")
+                            else:
+                                with st.expander(f"📋 View {len(msg_options)} Recovery Options (click to expand)", expanded=False):
+                                    render_option_cards(msg_options, None, on_finalize=lambda opt, ev=msg.get("evidence"): handle_finalize(opt, ev), key_prefix=f"msg_opt_exp_{msg_idx}")
 
-                    if msg.get("ledger"):
-                        render_ledger_table(msg["ledger"], None)
+                        if msg.get("ledger"):
+                            render_ledger_table(msg["ledger"], None)
 
-
-                    # Render action chips
-                    chips = msg.get("action_chips", [])
-                    if chips:
-                        st.markdown("<div style='font-size: 0.8rem; font-weight: 600; color: #94a3b8; margin-top: 8px; margin-bottom: 4px;'>💡 Suggested Follow-up Actions:</div>", unsafe_allow_html=True)
-                        chip_cols = st.columns(len(chips))
-                        for c_idx, chip in enumerate(chips):
-                            with chip_cols[c_idx]:
-                                if st.button(chip["label"], key=f"chip_{msg_idx}_{c_idx}", use_container_width=True):
-                                    _trigger_scenario(chip["query"])
-                                    st.rerun()
+                        # Render action chips only for non-clarifying operational results
+                        chips = msg.get("action_chips", [])
+                        if chips and not msg.get("abstained"):
+                            st.markdown("**💡 Suggested Follow-up Actions:**")
+                            chip_cols = st.columns(len(chips))
+                            for c_idx, chip in enumerate(chips):
+                                with chip_cols[c_idx]:
+                                    if st.button(chip["label"], key=f"chip_{msg_idx}_{c_idx}", use_container_width=True):
+                                        _trigger_scenario(chip["query"])
+                                        st.rerun()
 
 
     # -------------------------------------------------------------------------
@@ -1189,7 +933,7 @@ elif active_tab == "🚨 Disruption Cockpit":
     )
 
     with st.container():
-        with st.form("docked_directive_form", clear_on_submit=False, border=False):
+        with st.form("docked_directive_form", clear_on_submit=True, border=False):
             col_in, col_btn = st.columns([5, 1.2], gap="small")
             with col_in:
                 typed_directive = st.text_input(
@@ -1204,7 +948,7 @@ elif active_tab == "🚨 Disruption Cockpit":
 
         if submit_clicked and typed_directive.strip():
             st.session_state.active_query = typed_directive.strip()
-            st.session_state.directive_input_field = typed_directive.strip()
+            st.session_state.directive_input_field = ""
             st.rerun()
 
 
