@@ -165,6 +165,25 @@ def test_api_station_details_not_found(client):
     assert "not recognized" in resp.json()["detail"]
 
 
+def test_api_station_details_invalid_format(client):
+    """Test that station codes not matching 3-letter IATA format are rejected with 422."""
+    resp = client.get("/api/v1/stations/INVALID")
+    assert resp.status_code == 422
+
+
+def test_api_simulate_disruption_has_request_id(client):
+    payload = {
+        "query": "Captain A. Nair is sick for flight DX412. What is the impact and who is the recommended replacement?",
+        "offline_mode": True,
+    }
+    response = client.post("/api/v1/disruptions/simulate", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "request_id" in data
+    assert data["request_id"] is not None
+    assert len(data["request_id"]) == 36  # UUID v4 hex format
+
+
 def test_weather_dataset_file_integrity():
     import json
     from pathlib import Path

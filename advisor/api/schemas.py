@@ -100,6 +100,7 @@ class CandidateOptionSchema(BaseModel):
 
 
 class DisruptionSimulateResponse(BaseModel):
+    request_id: Optional[str] = None
     status: str
     query: str
     abstained: bool = False
@@ -126,6 +127,7 @@ class FinalizeRecommendationRequest(BaseModel):
 
 
 class FinalizeRecommendationResponse(BaseModel):
+    request_id: Optional[str] = None
     success: bool
     message: str
     finalized_overlay_id: str

@@ -53,9 +53,14 @@ def test_structured_logger_error(capsys):
 
 
 def test_audit_event_append(tmp_path):
-    """Verify that append_audit_event appends valid JSONL entries."""
+    """Verify that append_audit_event appends valid JSONL entries with request_id."""
     log_file = tmp_path / "test_audit.jsonl"
-    append_audit_event("SIMULATION_STARTED", {"scenario": "sick_crew"}, log_file=log_file)
+    append_audit_event(
+        "SIMULATION_STARTED",
+        {"scenario": "sick_crew"},
+        log_file=log_file,
+        request_id="req-123",
+    )
     append_audit_event("SIMULATION_FINISHED", {"status": "SUCCESS"}, log_file=log_file)
 
     lines = log_file.read_text().strip().split("\n")
@@ -63,3 +68,8 @@ def test_audit_event_append(tmp_path):
     first = json.loads(lines[0])
     assert first["event_type"] == "SIMULATION_STARTED"
     assert first["payload"]["scenario"] == "sick_crew"
+    assert first["request_id"] == "req-123"
+
+    second = json.loads(lines[1])
+    assert second["event_type"] == "SIMULATION_FINISHED"
+    assert second["request_id"] is None
