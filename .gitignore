@@ -50,3 +50,7 @@ ehthumbs.db
 *.sqlite
 *.sqlite3
 cert.json
+
+# Audit & Runtime Logs
+*.jsonl
+audit_log.jsonl

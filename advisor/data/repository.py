@@ -526,18 +526,30 @@ class OpsRepository:
         return [dict(r) for r in cursor.fetchall()]
 
     def list_expiring_certifications(
-        self, within_days: int = 30, reference_date: str = "2026-09-15"
+        self,
+        within_days: int = 30,
+        reference_date: str = "2026-09-15",
+        base: Optional[str] = None,
+        cert_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Lists crew certifications expiring within given days of reference date."""
+        """Lists crew certifications expiring within given days of reference date, optionally filtered by base or cert type."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            """SELECT crew_id, cert_type, expires_on
-               FROM certification
-               WHERE expires_on >= ? AND expires_on <= date(?, ? || ' days')
-               ORDER BY expires_on""",
-            (reference_date, reference_date, str(within_days)),
-        )
+        query = """
+            SELECT c.crew_id, cr.name, cr.rank, cr.base, c.cert_type, c.expires_on
+            FROM certification c
+            JOIN crew cr ON c.crew_id = cr.crew_id
+            WHERE c.expires_on >= ? AND c.expires_on <= date(?, ? || ' days')
+        """
+        params: List[Any] = [reference_date, reference_date, str(within_days)]
+        if base:
+            query += " AND cr.base = ?"
+            params.append(base.upper())
+        if cert_type:
+            query += " AND c.cert_type LIKE ?"
+            params.append(f"%{cert_type.lower()}%")
+        query += " ORDER BY c.expires_on"
+        cursor.execute(query, tuple(params))
         return [dict(r) for r in cursor.fetchall()]
 
     def get_pairing_assignments(self, pairing_id: str) -> List[Dict[str, str]]:
@@ -545,7 +557,7 @@ class OpsRepository:
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT a.crew_id, c.name, c.rank
+            """SELECT a.crew_id, c.name, c.rank, a.role
                FROM assignment a
                JOIN crew c ON a.crew_id = c.crew_id
                WHERE a.pairing_id = ?

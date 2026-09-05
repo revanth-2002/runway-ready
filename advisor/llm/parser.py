@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from advisor.audit.logger import StructuredLogger
-from advisor.llm.client import LLMClient, StubClient
+from advisor.llm.client import LLMClient, get_default_llm_client
 
 logger = StructuredLogger("advisor.llm.parser")
 
@@ -22,7 +22,7 @@ class QueryIntent:
 
 
 def parse_intent(query: str, client: Optional[LLMClient] = None) -> QueryIntent:
-    """Parses natural language into a structured QueryIntent."""
+    """Parses natural language into a structured QueryIntent using direct LLM classification."""
     result = _parse_intent_internal(query, client)
     logger.info(
         "Parsed query intent",
@@ -35,275 +35,66 @@ def parse_intent(query: str, client: Optional[LLMClient] = None) -> QueryIntent:
 
 
 def _parse_intent_internal(query: str, client: Optional[LLMClient] = None) -> QueryIntent:
-    """Internal parsing logic using fast-path and LLM fallback."""
-
-    q_lower = query.lower()
-
-    # 1. Deterministic Fast-Path
-    # Out of scope: hotels, baggage, passenger bookings
-    if any(k in q_lower for k in ["hotel", "baggage", "voucher", "passenger compensation", "cab booking"]):
-        return QueryIntent(
-            intent="out_of_scope",
-            entities={},
-            time_scope={},
-            confidence=0.99,
-            unsupported_aspects=["hotel/baggage customer service requests"],
-        )
-
-    # Ambiguous time
-    if "afternoon" in q_lower or "evening" in q_lower or "morning" in q_lower:
-        if not re.search(r"\d{1,2}:\d{2}", query):
-            return QueryIntent(
-                intent="ambiguous_time",
-                entities={},
-                time_scope={"raw": "ambiguous relative time"},
-                confidence=0.55,
-                unsupported_aspects=["Ambiguous time of day without UTC timestamp"],
-                missing_parameters=["time_window_utc"],
-                requires_clarification=True,
-            )
-
-    # Unknown crew ID (C-9999)
-    unknown_ids = re.findall(r"\bC-9\d{3}\b", query, re.IGNORECASE)
-    if unknown_ids:
-        return QueryIntent(
-            intent="unknown_entity_check",
-            entities={"crew_ids": [u.upper() for u in unknown_ids]},
-            time_scope={},
-            confidence=0.90,
-            unsupported_aspects=[],
-        )
-
-    # Station flight cancellation & financial loss simulation
-    if "cancel" in q_lower and any(k in q_lower for k in ["flight", "depart", "station", "blr", "del", "bom", "hyd", "maa", "cost", "loss"]):
-        target_station = "BLR"
-        for stn in ["BLR", "DEL", "BOM", "HYD", "MAA"]:
-            if stn.lower() in q_lower:
-                target_station = stn
-                break
-        date_m = re.search(r"\b(2026-\d{2}-\d{2})\b", query)
-        dt = date_m.group(1) if date_m else "2026-09-15"
-        return QueryIntent(
-            intent="cancel_station_departures",
-            entities={
-                "station": target_station,
-                "stations": [target_station],
-                "action": "cancel",
-                "scope": "departures",
-                "requested_metrics": ["cost_loss", "passengers_affected", "grounded_tails"],
-            },
-            time_scope={"raw": dt, "resolved_utc": f"{dt}T00:00:00Z"},
-            confidence=0.98,
-            unsupported_aspects=[],
-        )
-
-    # Reassign / Finalize directive
-    if "reassign" in q_lower or "finalize" in q_lower or "assign reserve" in q_lower:
-        crew_ids = re.findall(r"\bC-\d{4}\b", query, re.IGNORECASE)
-        pairing_m = re.search(r"\b(P-\d{4})\b", query, re.IGNORECASE)
-        return QueryIntent(
-            intent="reassign_crew",
-            entities={
-                "crew_ids": [c.upper() for c in crew_ids],
-                "pairing_id": pairing_m.group(1).upper() if pairing_m else None,
-            },
-            time_scope={},
-            confidence=0.95,
-            unsupported_aspects=[],
-        )
-
-    # Sick callout / disruption
-    if "sick" in q_lower or "incapacitated" in q_lower or "fatigued" in q_lower or "cover the" in q_lower:
-        crew_ids = re.findall(r"\bC-\d{4}\b", query, re.IGNORECASE)
-        flight_ids = re.findall(r"\bDX\d{3,4}\b", query, re.IGNORECASE)
-        tails = re.findall(r"\bVT-DX[A-F]\b", query, re.IGNORECASE)
-        role = "First Officer" if ("first officer" in q_lower or " fo " in q_lower or " fo" in q_lower) else "Captain"
-        
-        day_m = re.search(r"(\d{1,2})\s+Sep", query, re.IGNORECASE)
-        day = int(day_m.group(1)) if day_m else 15
-        dt = f"2026-09-{day:02d}"
-
-        return QueryIntent(
-            intent="simulate_sick",
-            entities={
-                "crew_ids": [c.upper() for c in crew_ids] if crew_ids else [],
-                "flight_ids": [f.upper() for f in flight_ids],
-                "tails": [t.upper() for t in tails],
-                "role": role,
-            },
-            time_scope={"raw": dt, "resolved_utc": f"{dt}T00:00:00Z"},
-            confidence=0.96,
-            unsupported_aspects=[],
-        )
-
-    # Crew based, active, or working at a station (e.g. "how many captains are working from HYD location", "who all are active captains from BLR")
-    crew_keywords = ["based", "working", "stationed", "active", "captains are", "pilots", "crew at", "crew from", "how many captains", "who are the captains"]
-    if any(k in q_lower for k in crew_keywords) and not ("reserve" in q_lower or "standby" in q_lower or "sick" in q_lower or "cancel" in q_lower):
-        stn = None
-        for s in ["DEL", "BLR", "BOM", "HYD", "MAA"]:
-            if s.lower() in q_lower:
-                stn = s
-                break
-        if not stn:
-            stn = "DEL" if "del" in q_lower else ("BLR" if "blr" in q_lower else None)
-
-        if stn:
-            rank = "Captain" if "captain" in q_lower else ("First Officer" if ("first officer" in q_lower or "fo" in q_lower) else None)
-            return QueryIntent(
-                intent="lookup_crew_by_base",
-                entities={"base": stn, "rank": rank},
-                time_scope={},
-                confidence=0.98,
-                unsupported_aspects=[],
-            )
-
-    # Cumulative duty hours in 7 days
-    if ("duty hours" in q_lower and "7 days" in q_lower) or "45 or more" in q_lower:
-        return QueryIntent(
-            intent="lookup_high_duty_crew",
-            entities={"threshold": 45.0, "days": 7},
-            time_scope={"raw": "2026-09-15"},
-            confidence=0.98,
-            unsupported_aspects=[],
-        )
-
-    # Reserve lookup
-    if "reserve" in q_lower or "standby" in q_lower or "who is on" in q_lower:
-        stations = []
-        for stn in ["BLR", "DEL", "BOM", "HYD", "MAA"]:
-            if stn.lower() in q_lower:
-                stations.append(stn)
-        return QueryIntent(
-            intent="lookup_reserves",
-            entities={"stations": stations or ["BLR"]},
-            time_scope={"raw": "2026-09-15", "resolved_utc": "2026-09-15T00:00:00Z"},
-            confidence=0.98,
-            unsupported_aspects=[],
-        )
-
-    # Can crew X fly flight Y
-    if "can" in q_lower and ("fly" in q_lower or "operate" in q_lower):
-        crew_ids = re.findall(r"\bC-\d{4}\b", query, re.IGNORECASE)
-        flight_ids = re.findall(r"\bDX\d{3,4}\b", query, re.IGNORECASE)
-        return QueryIntent(
-            intent="check_legality",
-            entities={
-                "crew_ids": [c.upper() for c in crew_ids],
-                "flight_ids": [f.upper() for f in flight_ids],
-            },
-            time_scope={"raw": "2026-09-15"},
-            confidence=0.95,
-            unsupported_aspects=[],
-        )
-
-    # Expiring certifications
-    if "expiring" in q_lower and ("cert" in q_lower or "licence" in q_lower):
-        days_m = re.search(r"(\d+)\s*days?", q_lower)
-        days = int(days_m.group(1)) if days_m else 30
-        date_m = re.search(r"\b(2026-\d{2}-\d{2})\b", query)
-        ref_date = date_m.group(1) if date_m else "2026-09-15"
-        return QueryIntent(
-            intent="lookup_expiring_certs",
-            entities={"within_days": days, "reference_date": ref_date},
-            time_scope={"raw": ref_date},
-            confidence=0.98,
-            unsupported_aspects=[],
-        )
-
-    # Pairing crew assignment
-    if "pairing" in q_lower and ("assigned" in q_lower or "roles" in q_lower):
-        p_match = re.search(r"\b(P-\d{4})\b", query, re.IGNORECASE)
-        return QueryIntent(
-            intent="lookup_pairing_crew",
-            entities={"pairing_id": p_match.group(1).upper() if p_match else "P-2291"},
-            time_scope={},
-            confidence=0.98,
-            unsupported_aspects=[],
-        )
-
-    # Nonstop destinations
-    if "nonstop" in q_lower:
-        stn_m = re.search(r"\b(?:from|to)\s+([A-Z]{3})\b", query, re.IGNORECASE)
-        stn = stn_m.group(1).upper() if stn_m else "BLR"
-        return QueryIntent(
-            intent="lookup_nonstop_destinations",
-            entities={"station": stn},
-            time_scope={},
-            confidence=0.98,
-            unsupported_aspects=[],
-        )
-
-    # Station closure impact
-    if ("closed" in q_lower or "closes" in q_lower) and "which flights are affected" in q_lower:
-        stn_m = re.search(r"\b(?:Station\s+)?([A-Z]{3})\s+is\s+closed\b", query, re.IGNORECASE)
-        stn = stn_m.group(1).upper() if stn_m else ("HYD" if "HYD" in query else "BLR")
-        time_m = re.search(r"(\d{2}:\d{2})[–-](\d{2}:\d{2})Z?", query)
-        t1, t2 = time_m.groups() if time_m else ("08:00", "14:00")
-        day_m = re.search(r"(\d{1,2})\s+Sep", query, re.IGNORECASE)
-        day = int(day_m.group(1)) if day_m else (19 if "19" in query else 17)
-        start_utc = f"2026-09-{day:02d}T{t1}:00Z"
-        end_utc = f"2026-09-{day:02d}T{t2}:00Z"
-        return QueryIntent(
-            intent="lookup_closure_impact",
-            entities={"station": stn, "start_utc": start_utc, "end_utc": end_utc},
-            time_scope={"raw": f"{start_utc} - {end_utc}"},
-            confidence=0.98,
-            unsupported_aspects=[],
-        )
-
-    # Flights departing station or flying route
-    if "which flights depart" in q_lower or "which flights fly" in q_lower:
-        date_m = re.search(r"\b(2026-\d{2}-\d{2})\b", query)
-        route_m = re.search(r"\b([A-Z]{3})\s*(?:→|->|to)\s*([A-Z]{3})\b", query, re.IGNORECASE)
-        depart_m = re.search(r"\bdepart(?:ing)?\s+([A-Z]{3})\b", query, re.IGNORECASE)
-        orig = route_m.group(1).upper() if route_m else (depart_m.group(1).upper() if depart_m else "DEL")
-        dest = route_m.group(2).upper() if route_m else None
-        dt = date_m.group(1) if date_m else "2026-09-15"
-        return QueryIntent(
-            intent="lookup_flights",
-            entities={"origin": orig, "destination": dest, "date": dt},
-            time_scope={"raw": dt},
-            confidence=0.98,
-            unsupported_aspects=[],
-        )
-
-
-    # 2. LLM Call 1: Structured Intent & Multi-Entity Parser
+    """Classifies user intent and extracts operational entities via direct LLM inference."""
     if client is None:
-        client = StubClient()
+        client = get_default_llm_client()
 
     prompt = f"""You are the natural language intelligence parser of an Airline Operations Control Center (AOCC).
 Analyze this operational directive across international or colloquial phrasings (Indian English, American English, aviation jargon).
-Understand the underlying semantic meaning and extract all operational entities and parameters:
+Understand the underlying semantic meaning and extract all operational entities, dates, and parameters.
+
+Current Operations Snapshot Date: 2026-09-15 (Today)
+- "tomorrow" resolves to "2026-09-16"
+- "yesterday" resolves to "2026-09-14"
+- "today", "this afternoon", "this morning", "tonight" resolve to "2026-09-15"
+- Expressions like "12pm to 2pm", "12:00-14:00", "afternoon", "morning" extract time_window and start/end times.
+
 Query: "{query}"
 
 Recognized Intents:
+- "evaluate_crew_move": user is asking what if a crew member is moved/assigned to a flight/pairing, or checking duty limits/breaches for a reassignment (e.g. "If I move FO C-2087 onto DX412, does anyone breach a duty limit?").
+- "request_recovery_options": user is asking for recovery plans, recommendations, standby crew options, or how to resolve a disruption.
+- "lookup_crew_info": user is asking about a crew member's rank, base, duty hours, ratings, profile, or standby status (e.g. "Why is Captain C-2087 not in the standby roster?").
 - "lookup_crew_by_base": user wants to know about captains, first officers, pilots, or crew based at, active at, stationed at, or operating/working from a city or airport (e.g. "how many captains are working from HYD", "who is flying out of BLR", "captains stationed in Delhi").
-- "lookup_reserves": user asks about reserves, standby crew, on-call roster (e.g. "who is on standby", "reserve pool at DEL", "avail reserves").
-- "lookup_flights": query flight schedule, route, or departures (e.g. "flights from DEL to BOM", "schedule for tomorrow").
+- "lookup_reserves": user asks about reserves, standby crew, on-call roster (e.g. "who is on standby", "reserve pool at DEL", "avail reserves", "who all are currently available in BLR airport", "who is on reserve tomorrow").
+- "lookup_flights": query flight schedule, route, or departures (e.g. "flights from DEL to BOM", "schedule for tomorrow", "Which flights depart DEL this afternoon 12pm to 2pm ?").
+- "lookup_pairing_crew": query crew members currently assigned to a specific pairing or flight.
+- "lookup_expiring_certs": user asks for expiring licenses, ratings, medical certificates, or recurrent training across a specific base or fleet-wide across the entire database (e.g. "List crew whose licence expires in the next 30 days for BLR", "List all certifications expiring within 30 days of 2026-09-15").
+- "lookup_nonstop_destinations": query nonstop destinations or city pairs served from a station.
+- "lookup_closure_impact": evaluate airport runway, airspace, or station closure window.
+- "lookup_high_duty_crew": query crew members with high duty hours or near duty limits.
 - "simulate_sick": crew member is sick, fatigued, or unavailable; pairing recovery needed (e.g. "Capt Nair is sick", "pilot called in unwell").
 - "cancel_station_departures": user wants to cancel departures from an airport or assess cancellation loss.
 - "check_legality": check DGCA legality or duty hours for a crew member on a flight.
-- "lookup_expiring_certs": check expiring licenses or medicals.
-- "lookup_closure_impact": evaluate airport runway or station closure window.
-- "reassign_crew": reassign or adopt a candidate for a pairing.
+- "reassign_crew": reassign or finalize adoption of a candidate for a pairing.
 - "out_of_scope": customer service, hotel bookings, passenger vouchers, baggage.
-- "ambiguous_input": missing critical info needed for operation.
+- "ambiguous_time": strictly ONLY for completely vague, unresolvable queries lacking flight, crew, station, and concrete parameters (e.g. "Who can fly sometime in the afternoon?").
+- "unknown_entity_check": references non-existent or unknown crew IDs/flight numbers.
+- "general_query": general conversational question about airline operations.
 
 Output ONLY a JSON object matching this schema:
 {{
   "intents": [
     {{
-      "intent": "lookup_crew_by_base" | "lookup_reserves" | "lookup_flights" | "simulate_sick" | "cancel_station_departures" | "check_legality" | "out_of_scope" | "ambiguous_input" | "general_query",
+      "intent": "evaluate_crew_move" | "request_recovery_options" | "lookup_crew_info" | "lookup_crew_by_base" | "lookup_reserves" | "lookup_flights" | "lookup_pairing_crew" | "lookup_expiring_certs" | "lookup_nonstop_destinations" | "lookup_closure_impact" | "lookup_high_duty_crew" | "simulate_sick" | "cancel_station_departures" | "check_legality" | "reassign_crew" | "out_of_scope" | "ambiguous_time" | "unknown_entity_check" | "general_query",
       "entities": {{
         "base": "BLR" | "DEL" | "BOM" | "HYD" | "MAA" | null,
         "stations": ["BLR"],
+        "origin": "DEL" | "BLR" | "BOM" | "HYD" | "MAA" | null,
+        "destination": "BLR" | "DEL" | "BOM" | "HYD" | "MAA" | null,
+        "date": "2026-09-15",
+        "time_window": "12:00-14:00" | null,
+        "start_time": "12:00" | null,
+        "end_time": "14:00" | null,
         "rank": "Captain" | "First Officer" | "Cabin Crew" | null,
         "crew_ids": [],
         "flight_ids": [],
         "pairing_id": null,
-        "action": "cancel",
-        "requested_metrics": ["cost_loss", "passengers"]
+        "displaced_crew_id": null,
+        "tails": [],
+        "specified_role": "Captain" | "First Officer" | null,
+        "action": "move_check" | "cancel" | "lookup" | "simulate" | "reassign",
+        "requested_metrics": ["duty_limits", "cost_loss", "passengers"]
       }},
       "time_scope": {{"raw": "2026-09-15", "resolved_utc": "2026-09-15T00:00:00Z"}},
       "missing_parameters": [],
@@ -321,17 +112,28 @@ Output ONLY a JSON object matching this schema:
             data = json.loads(json_match.group(0))
             first_intent = data.get("intents", [{}])[0]
             entities = first_intent.get("entities", {})
-            # Normalize station/base if station was extracted
+
+            # Normalize base and stations
             if not entities.get("base") and entities.get("stations"):
                 entities["base"] = entities["stations"][0]
+            elif entities.get("base") and not entities.get("stations"):
+                entities["stations"] = [entities["base"]]
+
+            # Confidence resolution
+            confidence = float(first_intent.get("confidence", data.get("confidence", 0.90)))
+
+            unsupported = first_intent.get("unsupported_aspects", data.get("unsupported_aspects", []))
+            missing = first_intent.get("missing_parameters", [])
+            req_clarify = bool(first_intent.get("requires_clarification", False))
+
             return QueryIntent(
                 intent=first_intent.get("intent", "general_query"),
                 entities=entities,
                 time_scope=first_intent.get("time_scope", {}),
-                confidence=float(data.get("confidence", 0.90)),
-                unsupported_aspects=data.get("unsupported_aspects", []),
-                missing_parameters=first_intent.get("missing_parameters", []),
-                requires_clarification=bool(first_intent.get("requires_clarification", False)),
+                confidence=confidence,
+                unsupported_aspects=unsupported,
+                missing_parameters=missing,
+                requires_clarification=req_clarify,
             )
     except Exception as e:
         logger.warning("LLM intent parsing exception", error=str(e))
@@ -343,5 +145,3 @@ Output ONLY a JSON object matching this schema:
         confidence=0.70,
         unsupported_aspects=[],
     )
-
-

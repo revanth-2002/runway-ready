@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import importlib
 import os
 from pathlib import Path
+import re
 import sys
 from typing import Any, Dict, List, Optional
 import uuid
@@ -240,14 +241,15 @@ st.markdown(
         background: #1e293b;
         border: 1px solid rgba(255, 255, 255, 0.16);
         border-radius: 10px;
-        padding: 16px 20px;
-        margin-bottom: 16px;
+        padding: 14px 18px;
+        margin-bottom: 12px;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     }
     .response-header-title {
-        font-size: 17px;
+        font-size: 15px;
         font-weight: 700;
         color: #38bdf8;
         letter-spacing: 0.3px;
@@ -255,132 +257,7 @@ st.markdown(
         align-items: center;
         gap: 8px;
     }
-    .response-header-count {
-        background: #0284c7;
-        color: #ffffff;
-        font-size: 12px;
-        font-weight: 700;
-        padding: 4px 10px;
-        border-radius: 9999px;
-    }
-    .aligned-item-card {
-        background: #1e293b;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 8px;
-        padding: 12px 16px;
-        margin-bottom: 10px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        transition: border-color 0.15s ease-in-out;
-    }
-    .aligned-item-card:hover {
-        border-color: rgba(56, 189, 248, 0.4);
-    }
-    .aligned-item-left {
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-    }
-    .aligned-item-name {
-        font-size: 14.5px;
-        font-weight: 700;
-        color: #f8fafc;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    .aligned-item-code {
-        color: #38bdf8;
-        font-family: monospace;
-        font-weight: 600;
-    }
-    .aligned-item-subtitle {
-        font-size: 12px;
-        color: #94a3b8;
-    }
-    .aligned-item-right {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    .aligned-status-badge {
-        font-size: 11.5px;
-        font-weight: 700;
-        padding: 4px 9px;
-        border-radius: 6px;
-        letter-spacing: 0.3px;
-        text-transform: uppercase;
-    }
-    .status-badge-green {
-        background: rgba(16, 185, 129, 0.15);
-        color: #34d399;
-        border: 1px solid rgba(16, 185, 129, 0.35);
-    }
-    .status-badge-amber {
-        background: rgba(245, 158, 11, 0.15);
-        color: #fbbf24;
-        border: 1px solid rgba(245, 158, 11, 0.35);
-    }
-    .status-badge-red {
-        background: rgba(239, 68, 68, 0.15);
-        color: #f87171;
-        border: 1px solid rgba(239, 68, 68, 0.35);
-    }
-    .aligned-prose-container {
-        background: #1e293b;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 10px;
-        padding: 18px 22px;
-        margin-bottom: 20px;
-        line-height: 1.6;
-    }
 
-    /* =========================================================
-       STATIC FIXED FOOTER: 100% Locked to Bottom of Window
-       ========================================================= */
-    div[data-testid="stForm"] {
-        position: fixed !important;
-        bottom: 0px !important;
-        left: 21rem !important;
-        right: 0px !important;
-        width: calc(100% - 21rem) !important;
-        height: auto !important;
-        min-height: 0 !important;
-        max-height: 80px !important;
-        z-index: 999999 !important;
-        background: #0f172a !important; /* solid opaque slate-900 */
-        border-top: 2px solid rgba(255, 255, 255, 0.18) !important;
-        box-shadow: 0 -10px 35px rgba(0, 0, 0, 0.6) !important;
-        padding: 10px 2.5rem !important;
-        margin: 0 !important;
-        box-sizing: border-box !important;
-    }
-
-    div[data-testid="stForm"] > div {
-        height: auto !important;
-        min-height: 0 !important;
-    }
-
-    /* Expand to full window width when sidebar is collapsed */
-    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) div[data-testid="stForm"] {
-        left: 0px !important;
-        width: 100% !important;
-    }
-
-    /* Responsive for mobile and tablet screens */
-    @media (max-width: 991px) {
-        div[data-testid="stForm"] {
-            left: 0px !important;
-            width: 100% !important;
-            padding: 10px 1.5rem 12px 1.5rem !important;
-        }
-    }
-
-    /* Ensure ample bottom clearance so the static footer never obscures content */
-    div[data-testid="stMainBlockContainer"] {
-        padding-bottom: 8.5rem !important;
-    }
 
     /* Command prompt input field styling */
     div[data-testid="stTextInput"] input {
@@ -493,7 +370,7 @@ with st.sidebar:
         now_str = datetime.now(timezone.utc).strftime("%H:%M:%SZ")
         st.session_state.active_query = query
         st.session_state.selected_query = query
-        st.session_state.directive_input_field = query
+        st.session_state.directive_input_field = ""
         st.session_state.nav_target = "🚨 Disruption Cockpit"
         st.session_state.last_finalized = None
         st.session_state.input_history.insert(0, query)
@@ -572,173 +449,7 @@ with st.sidebar:
         st.info("**Offline Stub**\n\nDeterministic sandbox mode\n\n*(Set `GEMINI_API_KEY` in `.env`)*")
 
 
-def render_aligned_prose(prose_text: str) -> None:
-    """Renders operational responses in an aligned, structured, and legible presentation.
-    
-    Transforms unaligned inline bullet text or raw lists into structured, high-visibility 
-    aviation decision cards with status badges and clean typography.
-    """
-    if not prose_text:
-        return
 
-    # Normalize carriage returns and unicode bullets
-    text = prose_text.replace("\r\n", "\n").replace("\r", "\n")
-    
-    # Check if this is an Active Reserves list or Crew Based / Working list
-    if "Active Reserves at" in text or "based at" in text:
-        parts = text.split("\n", 1)
-        header_line = parts[0].strip().strip("*").rstrip(":")
-        body_text = parts[1] if len(parts) > 1 else ""
-        
-        # Split individual lines
-        raw_items = []
-        tokens = [t.strip() for t in body_text.replace("•", "\n•").split("\n") if t.strip()]
-        for tok in tokens:
-            cleaned = tok.lstrip("•").strip()
-            if cleaned:
-                raw_items.append(cleaned)
-
-        count_label = f"{len(raw_items)} Crew" if "based" in header_line.lower() else f"{len(raw_items)} On-Call"
-        
-        st.markdown(
-            f"""
-            <div class="response-header-card">
-                <div class="response-header-title">
-                    <span>👥</span> {header_line}
-                </div>
-                <div class="response-header-count">{count_label}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        
-        if not raw_items or (len(raw_items) == 1 and "permanently based" in raw_items[0]):
-            # Informational notice when 0 crew are domiciled at an outstation
-            notice_msg = raw_items[0] if raw_items else body_text
-            st.markdown(
-                f"""
-                <div class="aligned-item-card" style="padding: 16px;">
-                    <div class="aligned-item-left">
-                        <div class="aligned-item-name">
-                            <span>ℹ️</span> Operational Base Notice
-                        </div>
-                        <div class="aligned-item-subtitle" style="font-size: 13px; color: #cbd5e1; margin-top: 4px; line-height: 1.5;">
-                            {notice_msg}
-                        </div>
-                    </div>
-                    <div class="aligned-item-right">
-                        <span class="aligned-status-badge status-badge-amber">TURNAROUND HUB</span>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            return
-
-        for item in raw_items:
-            # Typical format: C-3305 (V. Menon) — Captain [A320] (ROSTERED (P-2203))
-            badge_class = "status-badge-green"
-            badge_text = "AVAILABLE"
-            if "INCAPACITATED" in item:
-                badge_class = "status-badge-red"
-                badge_text = "INCAPACITATED"
-            elif "CALLED" in item or "ROSTERED" in item:
-                badge_class = "status-badge-amber"
-                badge_text = "ROSTERED" if "ROSTERED" in item else "CALLED"
-            elif "STANDBY" in item:
-                badge_class = "status-badge-green"
-                badge_text = "STANDBY"
-            
-            # Clean display string
-            display_item = item.replace("**", "").replace("`", "")
-            
-            # Extract crew title and details if delimited by dash
-            if "—" in display_item or " - " in display_item:
-                delim = "—" if "—" in display_item else " - "
-                crew_part, duty_part = display_item.split(delim, 1)
-                crew_part = crew_part.strip()
-                duty_part = duty_part.strip()
-            else:
-                crew_part = display_item
-                duty_part = ""
-            
-            # Separate out status tag in parentheses from duty_part
-            if "(" in duty_part and ")" in duty_part and any(s in duty_part for s in ["STANDBY", "AVAILABLE", "CALLED", "INCAPACITATED"]):
-                main_duty = duty_part[:duty_part.rfind("(")].strip()
-            else:
-                main_duty = duty_part
-
-            st.markdown(
-                f"""
-                <div class="aligned-item-card">
-                    <div class="aligned-item-left">
-                        <div class="aligned-item-name">
-                            <span>👨‍✈️</span> {crew_part}
-                        </div>
-                        <div class="aligned-item-subtitle">{main_duty}</div>
-                    </div>
-                    <div class="aligned-item-right">
-                        <span class="aligned-status-badge {badge_class}">{badge_text}</span>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        return
-
-    # Check if this is a Flights Lookup list
-    if "Flights departing" in text or "departing" in text and "→" in text:
-        parts = text.split("\n", 1)
-        header_line = parts[0].strip().strip("*").rstrip(":")
-        body_text = parts[1] if len(parts) > 1 else ""
-        
-        raw_items = []
-        tokens = [t.strip() for t in body_text.replace("•", "\n•").split("\n") if t.strip()]
-        for tok in tokens:
-            cleaned = tok.lstrip("•").strip()
-            if cleaned:
-                raw_items.append(cleaned)
-                
-        st.markdown(
-            f"""
-            <div class="response-header-card">
-                <div class="response-header-title">
-                    <span>✈️</span> {header_line}
-                </div>
-                <div class="response-header-count">{len(raw_items)} Flights</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        
-        for item in raw_items:
-            display_item = item.replace("**", "").replace("`", "")
-            st.markdown(
-                f"""
-                <div class="aligned-item-card">
-                    <div class="aligned-item-left">
-                        <div class="aligned-item-name">
-                            <span>🛫</span> {display_item}
-                        </div>
-                    </div>
-                    <div class="aligned-item-right">
-                        <span class="aligned-status-badge status-badge-green">SCHEDULED</span>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        return
-
-    # Fallback for structured prose or markdown
-    st.markdown(
-        f"""
-        <div class="aligned-prose-container">
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(text)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 
@@ -924,8 +635,12 @@ elif active_tab == "📍 Airport Hubs (BLR, DEL...)":
 # WORKSPACE 2: Disruption & Recovery Cockpit
 # -------------------------------------------------------------------------
 elif active_tab == "🚨 Disruption Cockpit":
-    def handle_finalize(opt):
-        evidence = st.session_state.get("pending_evidence", {})
+    if "cockpit_messages" not in st.session_state:
+        st.session_state.cockpit_messages = []
+
+    def handle_finalize(opt, evidence=None):
+        if evidence is None:
+            evidence = st.session_state.get("pending_evidence", {})
         disrupted_id = evidence.get("disrupted_crew_id", "C-1042")
         pairing_id = evidence.get("broken_pairing_id", "P-2291")
         flight_ids = evidence.get("flight_ids", [])
@@ -957,130 +672,284 @@ elif active_tab == "🚨 Disruption Cockpit":
             "disrupted_crew": disrupted_id,
         }
 
-        st.session_state.pending_options = None
-        st.session_state.pending_evidence = {}
-        st.session_state.pending_prose = None
-        st.session_state.pending_ledger = None
-        st.session_state.pending_twin_view = None
-        st.session_state.active_query = ""
-        st.session_state.selected_query = ""
-        st.session_state.directive_input_field = ""
+        conf_msg = (
+            f"🎉 **Operational Decision Finalized & Committed to Digital Twin!**\n\n"
+            f"• **Dispatched Crew:** `{opt.crew_id}` ({opt.candidate_type.replace('_', ' ').title()})\n"
+            f"• **Pairing Recovered:** `{pairing_id}` (Displaced: `{disrupted_id}`)\n"
+            f"• **Cost Incurred:** `₹{int(opt.cost.total_inr):,}` | **Status:** All legs restored to `ON_TIME`."
+        )
+        st.session_state.cockpit_messages.append({
+            "id": f"msg_assistant_fin_{len(st.session_state.cockpit_messages)}",
+            "role": "assistant",
+            "content": conf_msg,
+            "options": None,
+            "ledger": None,
+            "twin_view": None,
+            "action_chips": [
+                {"label": "🔍 Inspect Active Reserves (BLR)", "query": "Who is on reserve at BLR tomorrow?"},
+                {"label": "✈️ Review Aircraft Schedule", "query": "Which aircraft operates DX412 on 2026-09-15?"}
+            ],
+            "time": now_str,
+        })
         st.rerun()
 
-    # 0. Banner for finalized recommendation if set
-    if st.session_state.get("last_finalized"):
-        fin = st.session_state.last_finalized
-        st.success(
-            f"🎉 **Operational Decision Finalized & Committed to Digital Twin!**\n\n"
-            f"• **Dispatched Crew:** `{fin['candidate']}` ({fin['candidate_type']})\n"
-            f"• **Pairing Recovered:** `{fin['pairing_id']}` (Disrupted: `{fin['disrupted_crew']}`)\n"
-            f"• **Cost Incurred:** `₹{int(fin['cost_inr']):,}` | **Status:** All legs restored to `ON_TIME`."
-        )
-
-    # 1. Dynamic execution layout if new query entered
+    # 1. Process active query from docked prompt or action chips
     if active_query:
-        st.session_state.selected_query = ""  # Reset trigger
-        st.session_state.active_query = ""    # Reset trigger
-        logger.info("Executing user directive via API client", query=active_query)
+        now_ts = datetime.now(timezone.utc).strftime("%H:%M:%SZ")
+        curr_query = active_query.strip()
+        st.session_state.selected_query = ""
+        st.session_state.active_query = ""
+        st.session_state.directive_input_field = ""
+        if "directive_input_widget" in st.session_state:
+            st.session_state["directive_input_widget"] = ""
 
-        st.markdown(f"**Disruption Directive:** `{active_query}`")
-        status_box = st.status("Executing operational pipeline via API...", expanded=True)
+        # Add user message
+        st.session_state.cockpit_messages.append({
+            "id": f"msg_user_{len(st.session_state.cockpit_messages)}",
+            "role": "user",
+            "content": curr_query,
+            "time": now_ts,
+        })
+
+        logger.info("Executing user directive via API client", query=curr_query)
 
         try:
             is_offline = st.session_state.get("offline_sandbox_mode", False)
-            sim_res = api_client.simulate_disruption(active_query, offline_mode=is_offline)
+            with st.spinner("⚡ Autonomous Operations AI Co-Pilot analyzing flight schedules, legalities & recovery solutions..."):
+                sim_res = api_client.simulate_disruption(curr_query, offline_mode=is_offline)
         except Exception as err:
-            status_box.update(label=f"API Error: {err}", state="error", expanded=False)
-            st.error(f"Error communicating with backend API: {err}")
             sim_res = None
+            st.session_state.cockpit_messages.append({
+                "id": f"msg_assistant_err_{len(st.session_state.cockpit_messages)}",
+                "role": "assistant",
+                "content": f"🛑 **API Connection Error:** {err}",
+                "options": None,
+                "ledger": None,
+                "twin_view": None,
+                "action_chips": [],
+                "time": now_ts,
+            })
 
         if sim_res:
             if sim_res.get("abstained"):
-                status_box.update(label=f"Abstention Triggered: {sim_res['abstain_reason']}", state="error", expanded=False)
-                st.error(f"🛑 **Operational Abstention ({sim_res['abstain_reason']})**\n\n{sim_res['abstain_message']}")
+                reason = sim_res.get("abstain_reason", "NOTICE")
+                msg = sim_res.get("abstain_message", "Operational parameters need clarification.")
+                st.session_state.cockpit_messages.append({
+                    "id": f"msg_assistant_abs_{len(st.session_state.cockpit_messages)}",
+                    "role": "assistant",
+                    "content": f"⚠️ **Operational Notice ({reason}):**\n\n{msg}",
+                    "abstained": True,
+                    "options": None,
+                    "ledger": None,
+                    "twin_view": None,
+                    "action_chips": [],
+                    "time": now_ts,
+                })
             else:
-                status_box.update(label="Operational Decision Ready", state="complete", expanded=False)
-
                 options = sim_res.get("parsed_options", [])
                 ledger = sim_res.get("parsed_ledger")
                 twin_view = sim_res.get("parsed_twin_view")
                 prose = sim_res.get("prose_summary")
-
-                st.session_state.pending_options = options
-                st.session_state.pending_ledger = ledger
-                st.session_state.pending_twin_view = twin_view
-                st.session_state.pending_prose = prose
-                st.session_state.pending_evidence = {
-                    "disrupted_crew_id": sim_res.get("disrupted_crew_id"),
+                disrupted_crew_id = sim_res.get("disrupted_crew_id")
+                evidence = {
+                    "disrupted_crew_id": disrupted_crew_id,
                     "broken_pairing_id": sim_res.get("broken_pairing_id"),
                     "flight_ids": sim_res.get("uncrewed_flight_ids", []),
                 }
 
-                if options or ledger:
-                    col_left, col_right = st.columns([3, 2], gap="large")
-                    with col_left:
-                        if prose:
-                            render_aligned_prose(prose)
-                        if options:
-                            render_option_cards(options, col_left, on_finalize=handle_finalize, key_prefix="live_opt")
-                        if ledger:
-                            render_ledger_table(ledger, col_left)
+                # Derive intelligent follow-up chips based on user query intent
+                q_low = curr_query.lower()
+                flight_m = re.search(r"\b(DX\d{3,4})\b", curr_query, re.IGNORECASE)
+                target_fid = flight_m.group(1).upper() if flight_m else "DX412"
 
-                    with col_right:
-                        if twin_view:
-                            render_gantt_diff(twin_view, col_right, key_prefix="live_gantt_diff")
-                else:
-                    # Informational or lookup query (standby roster list, flight lookup, cert lookup):
-                    # Render prominent full-width card layout with aligned items and side Gantt
-                    col_left, col_right = st.columns([3, 2], gap="large")
-                    with col_left:
-                        if prose:
-                            render_aligned_prose(prose)
-                    with col_right:
-                        if twin_view:
-                            render_gantt_diff(twin_view, col_right, key_prefix="live_gantt_diff")
+                is_whatif_check = any(w in q_low for w in ["what if", "what-if", "if i ", "if we ", "does anyone breach", "breach", "can c-", "can captain", "can fo", "legally cover", "replace the captain", "replace the fo"])
 
-    # 2. Retain evaluated options or informational responses across re-renders
-    elif st.session_state.get("pending_options") or st.session_state.get("pending_prose"):
-        options = st.session_state.pending_options
-        ledger = st.session_state.pending_ledger
-        twin_view = st.session_state.pending_twin_view
-        prose = st.session_state.pending_prose
+                # Determine if the co-pilot is asking a clarifying question
+                is_clarifying_prompt = bool(prose) and (
+                    "?" in prose
+                    or "specify" in prose.lower()
+                    or "clarif" in prose.lower()
+                    or "which airport" in prose.lower()
+                    or "which flight" in prose.lower()
+                    or "could you please" in prose.lower()
+                )
 
-        col_left, col_right = st.columns([3, 2], gap="large")
-        with col_left:
-            if prose:
-                render_aligned_prose(prose)
-            if options:
-                render_option_cards(options, col_left, on_finalize=handle_finalize, key_prefix="retained_opt")
-            if ledger:
-                render_ledger_table(ledger, col_left)
+                action_chips = []
+                if is_clarifying_prompt:
+                    action_chips = []
+                elif is_whatif_check:
+                    # Encode the displaced crew from the API response into the chip query
+                    # so runner.py can look them up without hallucinating a sick disruption
+                    displaced_from_evidence = disrupted_crew_id  # from prior what-if eval_res
+                    displaced_tag = f" displaced:{displaced_from_evidence}" if displaced_from_evidence else ""
+                    action_chips = [
+                        {"label": f"⚡ Generate Recovery Options for {target_fid}", "query": f"produce recovery options for {target_fid}{displaced_tag}"},
+                        {"label": f"👥 Who is assigned to flight {target_fid}?", "query": f"Which crews are affected if I replace the captain on {target_fid}?"},
+                    ]
+                elif options:
+                    # Already showing recovery options — provide contextual follow-up
+                    action_chips = [
+                        {"label": "🔍 Check Standby Strength (BLR)", "query": "Who is on reserve at BLR tomorrow?"},
+                        {"label": "✈️ Review Aircraft Rotations", "query": f"Which aircraft operates {target_fid} on 2026-09-15?"},
+                    ]
 
-        with col_right:
-            if twin_view:
-                render_gantt_diff(twin_view, col_right, key_prefix="retained_gantt_diff")
+                st.session_state.cockpit_messages.append({
+                    "id": f"msg_assistant_{len(st.session_state.cockpit_messages)}",
+                    "role": "assistant",
+                    "content": prose,
+                    "is_clarifying": is_clarifying_prompt,
+                    "options": options,
+                    # Options are hidden by default; user must click to expand them
+                    "show_options": False if is_whatif_check else bool(options),
+                    "ledger": ledger,
+                    "twin_view": twin_view,
+                    "evidence": evidence,
+                    "action_chips": action_chips,
+                    "time": now_ts,
+                })
+                if twin_view:
+                    st.session_state.last_twin_view = twin_view
 
-    # 3. Baseline idle state
-    else:
-        col_left, col_right = st.columns([3, 2], gap="large")
-        with col_left:
+        st.rerun()
+
+    # 2. Header & Action Controls
+    head_c1, head_c2 = st.columns([4, 1.2])
+    with head_c1:
+        st.subheader("🚨 Disruption Cockpit — Autonomous Operations AI Co-Pilot")
+        st.caption("Real-time conversational intelligence for airline operations control, DGCA CAR Sec 7 compliance, and minimal-cost disruption repair.")
+    with head_c2:
+        if st.button("🔄 Clear Chat", use_container_width=True):
+            st.session_state.cockpit_messages = []
+            st.session_state.last_twin_view = None
+            st.rerun()
+
+    # 3. Main Workspace — Full-Width Conversation Stream
+    with st.container():
+        messages = st.session_state.get("cockpit_messages", [])
+        if not messages:
             st.info(
                 "👋 **Welcome, Airline Operations Controller.**\n\n"
-                "Select an operational scenario on the left or enter a natural language directive below to initiate simulation.\n\n"
-                "• **Decoupled REST API:** Queries routed cleanly to structured `/api/v1/...` endpoints.\n"
-                "• **Live Disruption Simulation:** Evaluates pairing breakdowns, passenger impacts, and minimal repair levers.\n"
-                "• **Deterministic Legality Ledgers:** DGCA CAR Section 7 compliance verification with signed arithmetic margins.\n"
-                "• **Anti-Hallucination Guard:** Mathematical slot substitution guaranteed free of invented IDs or figures.\n"
-                "• **State Memory & Finalization:** Accept recovery options to update the digital twin and hold changes in memory."
+                "I am your autonomous Operations Co-Pilot. You can query duty legalities, evaluate what-if crew moves, simulate disruptions, or assess mass station cancellations.\n\n"
+                "**💡 Suggested Operational Directives:**"
             )
-        with col_right:
-            # Materialize baseline view for idle state
-            try:
-                from advisor.api.routes import twin_manager
-                idle_view = twin_manager.state.materialize()
-                render_gantt_diff(idle_view, col_right, key_prefix="idle_base_gantt")
-            except Exception:
-                st.caption("Fleet timeline ready for scenario injection.")
+            q_cols = st.columns(2)
+            with q_cols[0]:
+                if st.button("🔴 Capt Nair Sick (DX412)", use_container_width=True, key="quick_cpt_nair"):
+                    _trigger_scenario("Captain A. Nair is sick for flight DX412. What is the impact and who is the recommended replacement?")
+                    st.rerun()
+                if st.button("⚖️ What-If: Move FO C-2087 to DX412", use_container_width=True, key="quick_c2087_whatif"):
+                    _trigger_scenario("If I move FO C-2087 onto DX412, does anyone breach a duty limit?")
+                    st.rerun()
+            with q_cols[1]:
+                if st.button("🔍 Check Standby Strength (BLR)", use_container_width=True, key="quick_blr_reserves"):
+                    _trigger_scenario("Who is on reserve at BLR tomorrow?")
+                    st.rerun()
+                if st.button("👥 Check DX412 Crew Roster", use_container_width=True, key="quick_dx412_crew"):
+                    _trigger_scenario("Which crews are affected if I replace the captain on DX412?")
+                    st.rerun()
+        else:
+            for msg_idx, msg in enumerate(messages):
+                if msg["role"] == "user":
+                    with st.chat_message("user", avatar="👨‍✈️"):
+                        st.markdown(msg["content"])
+                else:
+                    with st.chat_message("assistant", avatar="✈️"):
+                        if msg.get("content"):
+                            st.markdown(msg["content"])
+
+                        # Recovery option cards: only shown when user explicitly opted in
+                        msg_options = msg.get("options")
+                        show_opts = msg.get("show_options", bool(msg_options))
+                        if msg_options:
+                            if show_opts:
+                                render_option_cards(msg_options, None, on_finalize=lambda opt, ev=msg.get("evidence"): handle_finalize(opt, ev), key_prefix=f"msg_opt_{msg_idx}")
+                            else:
+                                with st.expander(f"📋 View {len(msg_options)} Recovery Options (click to expand)", expanded=False):
+                                    render_option_cards(msg_options, None, on_finalize=lambda opt, ev=msg.get("evidence"): handle_finalize(opt, ev), key_prefix=f"msg_opt_exp_{msg_idx}")
+
+                        if msg.get("ledger"):
+                            render_ledger_table(msg["ledger"], None)
+
+                        # Render action chips only for non-clarifying operational results
+                        chips = msg.get("action_chips", [])
+                        if chips and not msg.get("abstained"):
+                            st.markdown("**💡 Suggested Follow-up Actions:**")
+                            chip_cols = st.columns(len(chips))
+                            for c_idx, chip in enumerate(chips):
+                                with chip_cols[c_idx]:
+                                    if st.button(chip["label"], key=f"chip_{msg_idx}_{c_idx}", use_container_width=True):
+                                        _trigger_scenario(chip["query"])
+                                        st.rerun()
+
+
+    # -------------------------------------------------------------------------
+    # DOCKED OPERATIONAL DIRECTIVE PROMPT (Exclusively in Disruption Cockpit)
+    # -------------------------------------------------------------------------
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stForm"] {
+            position: fixed !important;
+            bottom: 0px !important;
+            left: 21rem !important;
+            right: 0px !important;
+            width: calc(100% - 21rem) !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: 80px !important;
+            z-index: 999999 !important;
+            background: #0f172a !important; /* solid opaque slate-900 */
+            border-top: 2px solid rgba(255, 255, 255, 0.18) !important;
+            box-shadow: 0 -10px 35px rgba(0, 0, 0, 0.6) !important;
+            padding: 10px 2.5rem !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
+        }
+
+        div[data-testid="stForm"] > div {
+            height: auto !important;
+            min-height: 0 !important;
+        }
+
+        [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) div[data-testid="stForm"] {
+            left: 0px !important;
+            width: 100% !important;
+        }
+
+        @media (max-width: 991px) {
+            div[data-testid="stForm"] {
+                left: 0px !important;
+                width: 100% !important;
+                padding: 10px 1.5rem 12px 1.5rem !important;
+            }
+        }
+
+        div[data-testid="stMainBlockContainer"] {
+            padding-bottom: 8.5rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.container():
+        with st.form("docked_directive_form", clear_on_submit=True, border=False):
+            col_in, col_btn = st.columns([5, 1.2], gap="small")
+            with col_in:
+                typed_directive = st.text_input(
+                    "Operational Directive",
+                    value=st.session_state.get("directive_input_field", ""),
+                    placeholder="Type disruption directive (e.g. Captain A. Nair is sick for flight DX412 tomorrow...)",
+                    label_visibility="collapsed",
+                    key="directive_input_widget",
+                )
+            with col_btn:
+                submit_clicked = st.form_submit_button("🚀 Run Directive", use_container_width=True, type="primary")
+
+        if submit_clicked and typed_directive.strip():
+            st.session_state.active_query = typed_directive.strip()
+            st.session_state.directive_input_field = ""
+            st.rerun()
 
 
 # -------------------------------------------------------------------------
@@ -1102,27 +971,3 @@ elif active_tab == "✈️ Fleet & Schedule":
     from advisor.api.routes import twin_manager
     current_twin_view = twin_manager.state.materialize()
     render_gantt_diff(current_twin_view, key_prefix="fleet_workspace_gantt")
-
-
-# =========================================================================
-# DOCKED OPERATIONAL DIRECTIVE PROMPT (Bottom of Window across all tabs)
-# =========================================================================
-with st.container():
-    with st.form("docked_directive_form", clear_on_submit=False, border=False):
-        col_in, col_btn = st.columns([5, 1.2], gap="small")
-        with col_in:
-            typed_directive = st.text_input(
-                "Operational Directive",
-                value=st.session_state.get("directive_input_field", ""),
-                placeholder="Type disruption directive (e.g. Captain A. Nair is sick for flight DX412 tomorrow...)",
-                label_visibility="collapsed",
-                key="directive_input_widget",
-            )
-        with col_btn:
-            submit_clicked = st.form_submit_button("🚀 Run Directive", use_container_width=True, type="primary")
-
-    if submit_clicked and typed_directive.strip():
-        st.session_state.active_query = typed_directive.strip()
-        st.session_state.directive_input_field = typed_directive.strip()
-        st.session_state.nav_target = "🚨 Disruption Cockpit"
-        st.rerun()

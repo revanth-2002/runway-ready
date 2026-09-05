@@ -114,3 +114,60 @@ def test_orchestrate_reassignment_and_collision_prevention(base_state, repo):
     cand_ids = [c.crew_id for c in cands]
     assert "C-3310" not in cand_ids
 
+
+def test_orchestrate_what_if_crew_move_duty_breach(base_state, repo):
+    query = "If I move FO C-2087 onto DX412, does anyone breach a duty limit?"
+    events = list(orchestrate(query, base_state, repo))
+    event_types = [e[0] for e in events]
+    assert "status" in event_types
+    assert "evidence" in event_types
+    assert "prose" in event_types
+    assert "abstain" not in event_types
+
+    evidence_event = next(e for e in events if e[0] == "evidence")
+    evidence = evidence_event[1]
+    assert evidence["legal"] is False
+    assert any(b.rule_id == "RULE-DUTY-02" for b in evidence["breaches"])
+    assert evidence["crew"].crew_id == "C-2087"
+    assert "Captain" in evidence["crew"].rank
+    assert evidence["displaced_crew"]["crew_id"] == "C-1042"
+
+    prose_event = next(e for e in events if e[0] == "prose")
+    prose = prose_event[1]
+    assert "Duty Limits Breached" in prose
+    assert "RULE-DUTY-02" in prose
+    assert "Captain R. Iyer" in prose
+    assert "C-1042" in prose
+
+
+def test_orchestrate_what_if_legal_crew_move(base_state, repo):
+    query = "If I move Captain C-3310 onto DX412, does anyone breach a duty limit?"
+    events = list(orchestrate(query, base_state, repo))
+    event_types = [e[0] for e in events]
+    assert "evidence" in event_types
+    assert "prose" in event_types
+
+    evidence_event = next(e for e in events if e[0] == "evidence")
+    assert evidence_event[1]["legal"] is True
+
+    prose_event = next(e for e in events if e[0] == "prose")
+    assert "Fully Legal & Compliant" in prose_event[1]
+    assert "C-3310" in prose_event[1]
+
+
+def test_orchestrate_crew_profile_lookup(base_state, repo):
+    query = "Why is Captain C-2087 not in the standby roster?"
+    events = list(orchestrate(query, base_state, repo))
+    event_types = [e[0] for e in events]
+    assert "evidence" in event_types
+    assert "prose" in event_types
+
+    evidence_event = next(e for e in events if e[0] == "evidence")
+    assert evidence_event[1]["crew"].crew_id == "C-2087"
+    assert evidence_event[1]["is_reserve"] is False
+
+    prose_event = next(e for e in events if e[0] == "prose")
+    assert "Captain R. Iyer" in prose_event[1]
+    assert "Off-Duty" in prose_event[1] or "Not on standby" in prose_event[1]
+
+
