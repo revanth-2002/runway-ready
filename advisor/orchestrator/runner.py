@@ -220,16 +220,40 @@ def orchestrate(
         append_audit_event("LOOKUP_CLOSURE_IMPACT", {"station": stn, "count": len(affected_flights)})
         return
 
-    # 11. Tool: Lookup Crew by Base
+    # 11. Tool: Lookup Crew by Base / Working Station
     if intent_bundle.intent == "lookup_crew_by_base":
         base = intent_bundle.entities.get("base", "DEL")
         rank = intent_bundle.entities.get("rank")
         yield ("status", f"Allocating Tool: lookup_crew_by_base ({rank or 'crew'} at {base})...")
         crew_list = repo.list_crew_by_base(base=base, rank=rank)
         c_ids = [c.crew_id for c in crew_list]
-        lines = [f"• **{c.crew_id} ({c.name})** — {c.rank}" for c in crew_list]
-        prose = f"**{rank or 'Crew'} based at {base} ({len(crew_list)} total):**\n" + ("\n".join(lines) if lines else f"No {rank or 'crew'} found based at {base}.")
-        yield ("evidence", {"crew": [c.crew_id for c in crew_list], "crew_ids": c_ids, "count": len(crew_list)})
+        twin_view = state.materialize()
+        lines = []
+        for c in crew_list:
+            twin_c = twin_view.crew.get(c.crew_id)
+            status_tag = "ACTIVE / ROSTERED"
+            if twin_c:
+                if twin_c.is_incapacitated:
+                    status_tag = "INCAPACITATED"
+                elif twin_c.assigned_pairing_id:
+                    status_tag = f"ROSTERED ({twin_c.assigned_pairing_id})"
+                elif twin_c.on_call_status:
+                    status_tag = twin_c.on_call_status
+            ratings = repo.list_ratings(c.crew_id)
+            ratings_str = f" [{', '.join(ratings)}]" if ratings else ""
+            lines.append(f"• **{c.crew_id} ({c.name})** — {c.rank}{ratings_str} ({status_tag})")
+
+        if lines:
+            prose = f"**{rank or 'Crew'} based at {base} ({len(crew_list)} total):**\n" + "\n".join(lines)
+        else:
+            # Helpful domain context: BLR and DEL are crew domicile bases; others are turnaround hubs
+            prose = (
+                f"**{rank or 'Crew'} based at {base} (0 total):**\n"
+                f"No {rank.lower() + 's' if rank else 'crew'} are permanently based or domiciled at {base}. "
+                f"Network operations at {base} are operated via turnaround rotations and positioning crew from domicile bases (`BLR` and `DEL`)."
+            )
+
+        yield ("evidence", {"crew": [c.crew_id for c in crew_list], "crew_ids": c_ids, "count": len(crew_list), "base": base, "rank": rank})
         yield ("prose", prose)
         append_audit_event("LOOKUP_CREW_BY_BASE", {"base": base, "rank": rank, "count": len(crew_list)})
         return

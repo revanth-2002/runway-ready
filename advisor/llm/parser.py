@@ -136,21 +136,26 @@ def _parse_intent_internal(query: str, client: Optional[LLMClient] = None) -> Qu
             unsupported_aspects=[],
         )
 
-    # Crew based at a station
-    if ("based at" in q_lower or "captains are based" in q_lower or "crew based" in q_lower) and not ("reserve" in q_lower or "standby" in q_lower):
-        stn = "DEL"
+    # Crew based, active, or working at a station (e.g. "how many captains are working from HYD location", "who all are active captains from BLR")
+    crew_keywords = ["based", "working", "stationed", "active", "captains are", "pilots", "crew at", "crew from", "how many captains", "who are the captains"]
+    if any(k in q_lower for k in crew_keywords) and not ("reserve" in q_lower or "standby" in q_lower or "sick" in q_lower or "cancel" in q_lower):
+        stn = None
         for s in ["DEL", "BLR", "BOM", "HYD", "MAA"]:
             if s.lower() in q_lower:
                 stn = s
                 break
-        rank = "Captain" if "captain" in q_lower else ("First Officer" if ("first officer" in q_lower or "fo" in q_lower) else None)
-        return QueryIntent(
-            intent="lookup_crew_by_base",
-            entities={"base": stn, "rank": rank},
-            time_scope={},
-            confidence=0.98,
-            unsupported_aspects=[],
-        )
+        if not stn:
+            stn = "DEL" if "del" in q_lower else ("BLR" if "blr" in q_lower else None)
+
+        if stn:
+            rank = "Captain" if "captain" in q_lower else ("First Officer" if ("first officer" in q_lower or "fo" in q_lower) else None)
+            return QueryIntent(
+                intent="lookup_crew_by_base",
+                entities={"base": stn, "rank": rank},
+                time_scope={},
+                confidence=0.98,
+                unsupported_aspects=[],
+            )
 
     # Cumulative duty hours in 7 days
     if ("duty hours" in q_lower and "7 days" in q_lower) or "45 or more" in q_lower:
@@ -267,28 +272,33 @@ def _parse_intent_internal(query: str, client: Optional[LLMClient] = None) -> Qu
     if client is None:
         client = StubClient()
 
-    prompt = f"""You are the intelligence parser of an Airline Operations Control Center (AOCC).
-Analyze this operational directive, extract all operational entities and parameters:
+    prompt = f"""You are the natural language intelligence parser of an Airline Operations Control Center (AOCC).
+Analyze this operational directive across international or colloquial phrasings (Indian English, American English, aviation jargon).
+Understand the underlying semantic meaning and extract all operational entities and parameters:
 Query: "{query}"
 
 Recognized Intents:
+- "lookup_crew_by_base": user wants to know about captains, first officers, pilots, or crew based at, active at, stationed at, or operating/working from a city or airport (e.g. "how many captains are working from HYD", "who is flying out of BLR", "captains stationed in Delhi").
+- "lookup_reserves": user asks about reserves, standby crew, on-call roster (e.g. "who is on standby", "reserve pool at DEL", "avail reserves").
+- "lookup_flights": query flight schedule, route, or departures (e.g. "flights from DEL to BOM", "schedule for tomorrow").
+- "simulate_sick": crew member is sick, fatigued, or unavailable; pairing recovery needed (e.g. "Capt Nair is sick", "pilot called in unwell").
 - "cancel_station_departures": user wants to cancel departures from an airport or assess cancellation loss.
-- "simulate_sick": crew member is sick/incapacitated, find replacements.
-- "lookup_reserves": find standby crew on-call.
-- "lookup_flights": query flight schedule or route.
-- "check_legality": check DGCA legality for a crew member on a flight.
-- "lookup_expiring_certs": check expiring licenses.
-- "lookup_closure_impact": evaluate airport closure window.
-- "out_of_scope": hotels, passenger vouchers, customer service.
+- "check_legality": check DGCA legality or duty hours for a crew member on a flight.
+- "lookup_expiring_certs": check expiring licenses or medicals.
+- "lookup_closure_impact": evaluate airport runway or station closure window.
+- "reassign_crew": reassign or adopt a candidate for a pairing.
+- "out_of_scope": customer service, hotel bookings, passenger vouchers, baggage.
 - "ambiguous_input": missing critical info needed for operation.
 
 Output ONLY a JSON object matching this schema:
 {{
   "intents": [
     {{
-      "intent": "cancel_station_departures" | "simulate_sick" | "lookup_reserves" | "lookup_flights" | "check_legality" | "out_of_scope" | "ambiguous_input" | "general_query",
+      "intent": "lookup_crew_by_base" | "lookup_reserves" | "lookup_flights" | "simulate_sick" | "cancel_station_departures" | "check_legality" | "out_of_scope" | "ambiguous_input" | "general_query",
       "entities": {{
+        "base": "BLR" | "DEL" | "BOM" | "HYD" | "MAA" | null,
         "stations": ["BLR"],
+        "rank": "Captain" | "First Officer" | "Cabin Crew" | null,
         "crew_ids": [],
         "flight_ids": [],
         "pairing_id": null,
@@ -310,17 +320,21 @@ Output ONLY a JSON object matching this schema:
         if json_match:
             data = json.loads(json_match.group(0))
             first_intent = data.get("intents", [{}])[0]
+            entities = first_intent.get("entities", {})
+            # Normalize station/base if station was extracted
+            if not entities.get("base") and entities.get("stations"):
+                entities["base"] = entities["stations"][0]
             return QueryIntent(
                 intent=first_intent.get("intent", "general_query"),
-                entities=first_intent.get("entities", {}),
+                entities=entities,
                 time_scope=first_intent.get("time_scope", {}),
-                confidence=float(data.get("confidence", 0.85)),
+                confidence=float(data.get("confidence", 0.90)),
                 unsupported_aspects=data.get("unsupported_aspects", []),
                 missing_parameters=first_intent.get("missing_parameters", []),
                 requires_clarification=bool(first_intent.get("requires_clarification", False)),
             )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("LLM intent parsing exception", error=str(e))
 
     return QueryIntent(
         intent="general_query",
@@ -329,3 +343,5 @@ Output ONLY a JSON object matching this schema:
         confidence=0.70,
         unsupported_aspects=[],
     )
+
+

@@ -235,6 +235,107 @@ st.markdown(
         overflow: hidden !important;
     }
 
+    /* Aligned Operational Response Layout & Cards */
+    .response-header-card {
+        background: #1e293b;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin-bottom: 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .response-header-title {
+        font-size: 17px;
+        font-weight: 700;
+        color: #38bdf8;
+        letter-spacing: 0.3px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .response-header-count {
+        background: #0284c7;
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 9999px;
+    }
+    .aligned-item-card {
+        background: #1e293b;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: border-color 0.15s ease-in-out;
+    }
+    .aligned-item-card:hover {
+        border-color: rgba(56, 189, 248, 0.4);
+    }
+    .aligned-item-left {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+    .aligned-item-name {
+        font-size: 14.5px;
+        font-weight: 700;
+        color: #f8fafc;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .aligned-item-code {
+        color: #38bdf8;
+        font-family: monospace;
+        font-weight: 600;
+    }
+    .aligned-item-subtitle {
+        font-size: 12px;
+        color: #94a3b8;
+    }
+    .aligned-item-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .aligned-status-badge {
+        font-size: 11.5px;
+        font-weight: 700;
+        padding: 4px 9px;
+        border-radius: 6px;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+    }
+    .status-badge-green {
+        background: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.35);
+    }
+    .status-badge-amber {
+        background: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.35);
+    }
+    .status-badge-red {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.35);
+    }
+    .aligned-prose-container {
+        background: #1e293b;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 10px;
+        padding: 18px 22px;
+        margin-bottom: 20px;
+        line-height: 1.6;
+    }
+
     /* =========================================================
        STATIC FIXED FOOTER: 100% Locked to Bottom of Window
        ========================================================= */
@@ -469,6 +570,176 @@ with st.sidebar:
         st.success(f"**Gemini Live**\n\n`{llm_info['model']}`\n\n*(30s timeout breaker active)*")
     else:
         st.info("**Offline Stub**\n\nDeterministic sandbox mode\n\n*(Set `GEMINI_API_KEY` in `.env`)*")
+
+
+def render_aligned_prose(prose_text: str) -> None:
+    """Renders operational responses in an aligned, structured, and legible presentation.
+    
+    Transforms unaligned inline bullet text or raw lists into structured, high-visibility 
+    aviation decision cards with status badges and clean typography.
+    """
+    if not prose_text:
+        return
+
+    # Normalize carriage returns and unicode bullets
+    text = prose_text.replace("\r\n", "\n").replace("\r", "\n")
+    
+    # Check if this is an Active Reserves list or Crew Based / Working list
+    if "Active Reserves at" in text or "based at" in text:
+        parts = text.split("\n", 1)
+        header_line = parts[0].strip().strip("*").rstrip(":")
+        body_text = parts[1] if len(parts) > 1 else ""
+        
+        # Split individual lines
+        raw_items = []
+        tokens = [t.strip() for t in body_text.replace("•", "\n•").split("\n") if t.strip()]
+        for tok in tokens:
+            cleaned = tok.lstrip("•").strip()
+            if cleaned:
+                raw_items.append(cleaned)
+
+        count_label = f"{len(raw_items)} Crew" if "based" in header_line.lower() else f"{len(raw_items)} On-Call"
+        
+        st.markdown(
+            f"""
+            <div class="response-header-card">
+                <div class="response-header-title">
+                    <span>👥</span> {header_line}
+                </div>
+                <div class="response-header-count">{count_label}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        
+        if not raw_items or (len(raw_items) == 1 and "permanently based" in raw_items[0]):
+            # Informational notice when 0 crew are domiciled at an outstation
+            notice_msg = raw_items[0] if raw_items else body_text
+            st.markdown(
+                f"""
+                <div class="aligned-item-card" style="padding: 16px;">
+                    <div class="aligned-item-left">
+                        <div class="aligned-item-name">
+                            <span>ℹ️</span> Operational Base Notice
+                        </div>
+                        <div class="aligned-item-subtitle" style="font-size: 13px; color: #cbd5e1; margin-top: 4px; line-height: 1.5;">
+                            {notice_msg}
+                        </div>
+                    </div>
+                    <div class="aligned-item-right">
+                        <span class="aligned-status-badge status-badge-amber">TURNAROUND HUB</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            return
+
+        for item in raw_items:
+            # Typical format: C-3305 (V. Menon) — Captain [A320] (ROSTERED (P-2203))
+            badge_class = "status-badge-green"
+            badge_text = "AVAILABLE"
+            if "INCAPACITATED" in item:
+                badge_class = "status-badge-red"
+                badge_text = "INCAPACITATED"
+            elif "CALLED" in item or "ROSTERED" in item:
+                badge_class = "status-badge-amber"
+                badge_text = "ROSTERED" if "ROSTERED" in item else "CALLED"
+            elif "STANDBY" in item:
+                badge_class = "status-badge-green"
+                badge_text = "STANDBY"
+            
+            # Clean display string
+            display_item = item.replace("**", "").replace("`", "")
+            
+            # Extract crew title and details if delimited by dash
+            if "—" in display_item or " - " in display_item:
+                delim = "—" if "—" in display_item else " - "
+                crew_part, duty_part = display_item.split(delim, 1)
+                crew_part = crew_part.strip()
+                duty_part = duty_part.strip()
+            else:
+                crew_part = display_item
+                duty_part = ""
+            
+            # Separate out status tag in parentheses from duty_part
+            if "(" in duty_part and ")" in duty_part and any(s in duty_part for s in ["STANDBY", "AVAILABLE", "CALLED", "INCAPACITATED"]):
+                main_duty = duty_part[:duty_part.rfind("(")].strip()
+            else:
+                main_duty = duty_part
+
+            st.markdown(
+                f"""
+                <div class="aligned-item-card">
+                    <div class="aligned-item-left">
+                        <div class="aligned-item-name">
+                            <span>👨‍✈️</span> {crew_part}
+                        </div>
+                        <div class="aligned-item-subtitle">{main_duty}</div>
+                    </div>
+                    <div class="aligned-item-right">
+                        <span class="aligned-status-badge {badge_class}">{badge_text}</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        return
+
+    # Check if this is a Flights Lookup list
+    if "Flights departing" in text or "departing" in text and "→" in text:
+        parts = text.split("\n", 1)
+        header_line = parts[0].strip().strip("*").rstrip(":")
+        body_text = parts[1] if len(parts) > 1 else ""
+        
+        raw_items = []
+        tokens = [t.strip() for t in body_text.replace("•", "\n•").split("\n") if t.strip()]
+        for tok in tokens:
+            cleaned = tok.lstrip("•").strip()
+            if cleaned:
+                raw_items.append(cleaned)
+                
+        st.markdown(
+            f"""
+            <div class="response-header-card">
+                <div class="response-header-title">
+                    <span>✈️</span> {header_line}
+                </div>
+                <div class="response-header-count">{len(raw_items)} Flights</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        
+        for item in raw_items:
+            display_item = item.replace("**", "").replace("`", "")
+            st.markdown(
+                f"""
+                <div class="aligned-item-card">
+                    <div class="aligned-item-left">
+                        <div class="aligned-item-name">
+                            <span>🛫</span> {display_item}
+                        </div>
+                    </div>
+                    <div class="aligned-item-right">
+                        <span class="aligned-status-badge status-badge-green">SCHEDULED</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        return
+
+    # Fallback for structured prose or markdown
+    st.markdown(
+        f"""
+        <div class="aligned-prose-container">
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(text)
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 # =========================================================================
@@ -745,21 +1016,32 @@ elif active_tab == "🚨 Disruption Cockpit":
                     "flight_ids": sim_res.get("uncrewed_flight_ids", []),
                 }
 
-                col_left, col_right = st.columns([3, 2], gap="large")
-                with col_left:
-                    if prose:
-                        st.markdown(prose)
-                    if options:
-                        render_option_cards(options, col_left, on_finalize=handle_finalize, key_prefix="live_opt")
-                    if ledger:
-                        render_ledger_table(ledger, col_left)
+                if options or ledger:
+                    col_left, col_right = st.columns([3, 2], gap="large")
+                    with col_left:
+                        if prose:
+                            render_aligned_prose(prose)
+                        if options:
+                            render_option_cards(options, col_left, on_finalize=handle_finalize, key_prefix="live_opt")
+                        if ledger:
+                            render_ledger_table(ledger, col_left)
 
-                with col_right:
-                    if twin_view:
-                        render_gantt_diff(twin_view, col_right, key_prefix="live_gantt_diff")
+                    with col_right:
+                        if twin_view:
+                            render_gantt_diff(twin_view, col_right, key_prefix="live_gantt_diff")
+                else:
+                    # Informational or lookup query (standby roster list, flight lookup, cert lookup):
+                    # Render prominent full-width card layout with aligned items and side Gantt
+                    col_left, col_right = st.columns([3, 2], gap="large")
+                    with col_left:
+                        if prose:
+                            render_aligned_prose(prose)
+                    with col_right:
+                        if twin_view:
+                            render_gantt_diff(twin_view, col_right, key_prefix="live_gantt_diff")
 
-    # 2. Retain evaluated options across re-renders
-    elif st.session_state.get("pending_options"):
+    # 2. Retain evaluated options or informational responses across re-renders
+    elif st.session_state.get("pending_options") or st.session_state.get("pending_prose"):
         options = st.session_state.pending_options
         ledger = st.session_state.pending_ledger
         twin_view = st.session_state.pending_twin_view
@@ -768,7 +1050,7 @@ elif active_tab == "🚨 Disruption Cockpit":
         col_left, col_right = st.columns([3, 2], gap="large")
         with col_left:
             if prose:
-                st.markdown(prose)
+                render_aligned_prose(prose)
             if options:
                 render_option_cards(options, col_left, on_finalize=handle_finalize, key_prefix="retained_opt")
             if ledger:

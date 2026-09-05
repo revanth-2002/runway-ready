@@ -1699,3 +1699,108 @@
 {"timestamp": "2026-09-05T05:10:22.880123+00:00", "event_type": "ABSTENTION", "payload": {"reason": "OUT_OF_SCOPE", "query": "Can we get hotel bookings and baggage vouchers for DX412 passengers?", "message": "Hotel accommodations and passenger baggage logistics are outside my operational scope. Please refer to Passenger Services."}}
 {"timestamp": "2026-09-05T05:10:22.881873+00:00", "event_type": "ABSTENTION", "payload": {"reason": "AMBIGUOUS_TIME", "query": "Who can fly sometime in the afternoon?", "message": "Relative time 'afternoon' is ambiguous across time zones. Please specify an exact UTC timestamp or flight number."}}
 {"timestamp": "2026-09-05T05:13:30.075502+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-2087", "broken_pairing": "", "uncrewed_count": 0, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:25:23.426205+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "BLR", "count": 12}}
+{"timestamp": "2026-09-05T05:25:25.500281+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:25:25.508819+00:00", "event_type": "ABSTENTION", "payload": {"reason": "UNKNOWN_ENTITY", "query": "Is Captain C-9999 available to fly DX412?", "message": "Crew member C-9999 does not exist in roster records."}}
+{"timestamp": "2026-09-05T05:25:25.839593+00:00", "event_type": "MASS_CANCELLATION_SIMULATED", "payload": {"station": "BLR", "date": "2026-09-15", "flight_count": 11, "passengers": 1512, "total_loss_inr": 8762000.0}}
+{"timestamp": "2026-09-05T05:25:25.843256+00:00", "event_type": "REASSIGNMENT_COMMITTED", "payload": {"pairing_id": "P-2291", "disrupted_crew": "C-1042", "replacement_crew": "C-3310", "delay_minutes": 0}}
+{"timestamp": "2026-09-05T05:25:29.629546+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:25:30.675194+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:25:30.691747+00:00", "event_type": "ABSTENTION", "payload": {"reason": "UNKNOWN_ENTITY", "query": "Is Captain C-9999 available to fly DX412?", "message": "Crew member C-9999 does not exist in roster records."}}
+{"timestamp": "2026-09-05T05:25:30.704950+00:00", "event_type": "REASSIGNMENT_COMMITTED", "payload": {"crew_id": "C-3310", "pairing_id": "P-2291", "cost_inr": 18500.0, "overlay_id": "ov-reassign-C-3310-13d918"}}
+{"timestamp": "2026-09-05T05:29:50.138403+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "BLR", "count": 12}}
+{"timestamp": "2026-09-05T05:37:14.551312+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "BLR", "count": 12}}
+{"timestamp": "2026-09-05T05:37:18.670949+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:37:18.680085+00:00", "event_type": "LOOKUP_FLIGHTS", "payload": {"origin": "DEL", "destination": null, "date": "2026-09-15", "count": 1}}
+{"timestamp": "2026-09-05T05:37:18.686635+00:00", "event_type": "LOOKUP_EXPIRING_CERTS", "payload": {"days": 30, "count": 6}}
+{"timestamp": "2026-09-05T05:37:20.098138+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "BLR", "count": 12}}
+{"timestamp": "2026-09-05T05:37:23.641699+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-2210", "broken_pairing": "", "uncrewed_count": 0, "top_candidate": "C-3305"}}
+{"timestamp": "2026-09-05T05:37:23.647830+00:00", "event_type": "LOOKUP_PAIRING_CREW", "payload": {"pairing_id": "P-2291", "count": 6}}
+{"timestamp": "2026-09-05T05:37:23.653088+00:00", "event_type": "LOOKUP_FLIGHTS", "payload": {"origin": "BLR", "destination": "BOM", "date": "2026-09-17", "count": 2}}
+{"timestamp": "2026-09-05T05:37:25.318616+00:00", "event_type": "LOOKUP_CREW_BY_BASE", "payload": {"base": "DEL", "rank": "Captain", "count": 1}}
+{"timestamp": "2026-09-05T05:37:29.969743+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-2087", "broken_pairing": "", "uncrewed_count": 0, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:37:29.977041+00:00", "event_type": "LOOKUP_NONSTOP_DESTINATIONS", "payload": {"station": "BLR", "destinations": ["BOM", "CCU", "COK", "DEL", "GOI", "HYD", "MAA"]}}
+{"timestamp": "2026-09-05T05:37:33.975054+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:37:35.913550+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:37:38.791992+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-2087", "broken_pairing": "", "uncrewed_count": 0, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:37:38.806065+00:00", "event_type": "LOOKUP_CLOSURE_IMPACT", "payload": {"station": "BLR", "count": 13}}
+{"timestamp": "2026-09-05T05:37:39.777394+00:00", "event_type": "ABSTENTION", "payload": {"reason": "AMBIGUOUS_TIME", "query": "Can C-2210 (DEL base) legally cover P-2291 if positioned to BLR on the morning of 15 Sep? What is the operational consequence?", "message": "Relative time 'afternoon' is ambiguous across time zones. Please specify an exact UTC timestamp or flight number."}}
+{"timestamp": "2026-09-05T05:37:41.528997+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-5417", "broken_pairing": "P-2210", "uncrewed_count": 4, "top_candidate": "C-2248"}}
+{"timestamp": "2026-09-05T05:37:44.579713+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3305", "broken_pairing": "", "uncrewed_count": 0, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:37:44.887443+00:00", "event_type": "MASS_CANCELLATION_SIMULATED", "payload": {"station": "BLR", "date": "2026-09-15", "flight_count": 11, "passengers": 1512, "total_loss_inr": 8762000.0}}
+{"timestamp": "2026-09-05T05:37:44.892864+00:00", "event_type": "LOOKUP_HIGH_DUTY_CREW", "payload": {"threshold": 45.0, "count": 2}}
+{"timestamp": "2026-09-05T05:37:46.490034+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3231", "broken_pairing": "P-2224", "uncrewed_count": 4, "top_candidate": "C-3315"}}
+{"timestamp": "2026-09-05T05:37:49.062831+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-5837", "broken_pairing": "P-2204", "uncrewed_count": 4, "top_candidate": "C-3305"}}
+{"timestamp": "2026-09-05T05:37:49.068846+00:00", "event_type": "LOOKUP_CLOSURE_IMPACT", "payload": {"station": "HYD", "count": 2}}
+{"timestamp": "2026-09-05T05:37:49.381411+00:00", "event_type": "MASS_CANCELLATION_SIMULATED", "payload": {"station": "BLR", "date": "2026-09-15", "flight_count": 11, "passengers": 1512, "total_loss_inr": 8762000.0}}
+{"timestamp": "2026-09-05T05:37:51.568949+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:37:53.078635+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3940", "broken_pairing": "P-2202", "uncrewed_count": 4, "top_candidate": "C-3305"}}
+{"timestamp": "2026-09-05T05:37:55.799984+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-5417", "broken_pairing": "P-2210", "uncrewed_count": 4, "top_candidate": "C-2248"}}
+{"timestamp": "2026-09-05T05:37:58.071393+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3310", "broken_pairing": "", "uncrewed_count": 0, "top_candidate": "C-5647"}}
+{"timestamp": "2026-09-05T05:37:59.888833+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-4520", "broken_pairing": "P-2232", "uncrewed_count": 2, "top_candidate": "C-3316"}}
+{"timestamp": "2026-09-05T05:37:59.894332+00:00", "event_type": "ABSTENTION", "payload": {"reason": "AMBIGUOUS_TIME", "query": "If the desk wants a standing morning briefing, which three data points per aircraft line should it surface and why?", "message": "Relative time 'afternoon' is ambiguous across time zones. Please specify an exact UTC timestamp or flight number."}}
+{"timestamp": "2026-09-05T05:38:01.574139+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3231", "broken_pairing": "P-2224", "uncrewed_count": 4, "top_candidate": "C-3315"}}
+{"timestamp": "2026-09-05T05:38:04.147421+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:38:07.579345+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-5417", "broken_pairing": "P-2210", "uncrewed_count": 4, "top_candidate": "C-2248"}}
+{"timestamp": "2026-09-05T05:38:09.996724+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3940", "broken_pairing": "P-2202", "uncrewed_count": 4, "top_candidate": "C-3305"}}
+{"timestamp": "2026-09-05T05:38:10.003027+00:00", "event_type": "ABSTENTION", "payload": {"reason": "UNKNOWN_ENTITY", "query": "Is Captain C-9999 available to fly DX412?", "message": "Crew member C-9999 does not exist in roster records."}}
+{"timestamp": "2026-09-05T05:38:10.008424+00:00", "event_type": "ABSTENTION", "payload": {"reason": "OUT_OF_SCOPE", "query": "Can we get hotel bookings and baggage vouchers for DX412 passengers?", "message": "Hotel accommodations and passenger baggage logistics are outside my operational scope. Please refer to Passenger Services."}}
+{"timestamp": "2026-09-05T05:38:10.013529+00:00", "event_type": "ABSTENTION", "payload": {"reason": "AMBIGUOUS_TIME", "query": "Who can fly sometime in the afternoon?", "message": "Relative time 'afternoon' is ambiguous across time zones. Please specify an exact UTC timestamp or flight number."}}
+{"timestamp": "2026-09-05T05:39:56.792395+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "BLR", "count": 12}}
+{"timestamp": "2026-09-05T05:40:13.983956+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "BLR", "count": 12}}
+{"timestamp": "2026-09-05T05:42:50.687594+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:42:52.432004+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:42:52.459012+00:00", "event_type": "ABSTENTION", "payload": {"reason": "UNKNOWN_ENTITY", "query": "Is Captain C-9999 available to fly DX412?", "message": "Crew member C-9999 does not exist in roster records."}}
+{"timestamp": "2026-09-05T05:42:52.471737+00:00", "event_type": "REASSIGNMENT_COMMITTED", "payload": {"crew_id": "C-3310", "pairing_id": "P-2291", "cost_inr": 18500.0, "overlay_id": "ov-reassign-C-3310-b4c513"}}
+{"timestamp": "2026-09-05T05:46:34.329717+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "BLR", "count": 12}}
+{"timestamp": "2026-09-05T05:47:36.478855+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "HYD", "count": 0}}
+{"timestamp": "2026-09-05T05:47:59.854972+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T05:51:50.204797+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "HYD", "count": 0}}
+{"timestamp": "2026-09-05T05:52:09.294706+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "HYD", "count": 0}}
+{"timestamp": "2026-09-05T05:52:09.476741+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "HYD", "count": 0}}
+{"timestamp": "2026-09-05T06:01:41.781117+00:00", "event_type": "LOOKUP_CREW_BY_BASE", "payload": {"base": "HYD", "rank": "Captain", "count": 0}}
+{"timestamp": "2026-09-05T06:01:42.413667+00:00", "event_type": "LOOKUP_CREW_BY_BASE", "payload": {"base": "BLR", "rank": "Captain", "count": 27}}
+{"timestamp": "2026-09-05T06:01:57.076217+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "BLR", "count": 12}}
+{"timestamp": "2026-09-05T06:02:01.692388+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T06:02:01.703840+00:00", "event_type": "LOOKUP_FLIGHTS", "payload": {"origin": "DEL", "destination": null, "date": "2026-09-15", "count": 1}}
+{"timestamp": "2026-09-05T06:02:01.712939+00:00", "event_type": "LOOKUP_EXPIRING_CERTS", "payload": {"days": 30, "count": 6}}
+{"timestamp": "2026-09-05T06:02:03.131575+00:00", "event_type": "LOOKUP_RESERVES", "payload": {"station": "BLR", "count": 12}}
+{"timestamp": "2026-09-05T06:02:06.628141+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-2210", "broken_pairing": "", "uncrewed_count": 0, "top_candidate": "C-3305"}}
+{"timestamp": "2026-09-05T06:02:06.636626+00:00", "event_type": "LOOKUP_PAIRING_CREW", "payload": {"pairing_id": "P-2291", "count": 6}}
+{"timestamp": "2026-09-05T06:02:06.654352+00:00", "event_type": "LOOKUP_FLIGHTS", "payload": {"origin": "BLR", "destination": "BOM", "date": "2026-09-17", "count": 2}}
+{"timestamp": "2026-09-05T06:02:08.351276+00:00", "event_type": "LOOKUP_CREW_BY_BASE", "payload": {"base": "DEL", "rank": "Captain", "count": 1}}
+{"timestamp": "2026-09-05T06:02:12.888188+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-2087", "broken_pairing": "", "uncrewed_count": 0, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T06:02:12.897286+00:00", "event_type": "LOOKUP_NONSTOP_DESTINATIONS", "payload": {"station": "BLR", "destinations": ["BOM", "CCU", "COK", "DEL", "GOI", "HYD", "MAA"]}}
+{"timestamp": "2026-09-05T06:02:19.543734+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T06:02:23.001075+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T06:02:27.116995+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-2087", "broken_pairing": "", "uncrewed_count": 0, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T06:02:27.140689+00:00", "event_type": "LOOKUP_CLOSURE_IMPACT", "payload": {"station": "BLR", "count": 13}}
+{"timestamp": "2026-09-05T06:02:27.745433+00:00", "event_type": "ABSTENTION", "payload": {"reason": "AMBIGUOUS_TIME", "query": "Can C-2210 (DEL base) legally cover P-2291 if positioned to BLR on the morning of 15 Sep? What is the operational consequence?", "message": "Relative time 'afternoon' is ambiguous across time zones. Please specify an exact UTC timestamp or flight number."}}
+{"timestamp": "2026-09-05T06:02:30.685604+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-5417", "broken_pairing": "P-2210", "uncrewed_count": 4, "top_candidate": "C-2248"}}
+{"timestamp": "2026-09-05T06:02:34.357839+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3305", "broken_pairing": "", "uncrewed_count": 0, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T06:02:34.803084+00:00", "event_type": "MASS_CANCELLATION_SIMULATED", "payload": {"station": "BLR", "date": "2026-09-15", "flight_count": 11, "passengers": 1512, "total_loss_inr": 8762000.0}}
+{"timestamp": "2026-09-05T06:02:34.810253+00:00", "event_type": "LOOKUP_HIGH_DUTY_CREW", "payload": {"threshold": 45.0, "count": 2}}
+{"timestamp": "2026-09-05T06:02:37.455242+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3231", "broken_pairing": "P-2224", "uncrewed_count": 4, "top_candidate": "C-3315"}}
+{"timestamp": "2026-09-05T06:02:41.881291+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-5837", "broken_pairing": "P-2204", "uncrewed_count": 4, "top_candidate": "C-3305"}}
+{"timestamp": "2026-09-05T06:02:41.891768+00:00", "event_type": "LOOKUP_CLOSURE_IMPACT", "payload": {"station": "HYD", "count": 2}}
+{"timestamp": "2026-09-05T06:02:42.492620+00:00", "event_type": "MASS_CANCELLATION_SIMULATED", "payload": {"station": "BLR", "date": "2026-09-15", "flight_count": 11, "passengers": 1512, "total_loss_inr": 8762000.0}}
+{"timestamp": "2026-09-05T06:02:46.117898+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T06:02:48.827664+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3940", "broken_pairing": "P-2202", "uncrewed_count": 4, "top_candidate": "C-3305"}}
+{"timestamp": "2026-09-05T06:02:52.733369+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-5417", "broken_pairing": "P-2210", "uncrewed_count": 4, "top_candidate": "C-2248"}}
+{"timestamp": "2026-09-05T06:02:55.635201+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3310", "broken_pairing": "", "uncrewed_count": 0, "top_candidate": "C-5647"}}
+{"timestamp": "2026-09-05T06:02:58.372021+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-4520", "broken_pairing": "P-2232", "uncrewed_count": 2, "top_candidate": "C-3316"}}
+{"timestamp": "2026-09-05T06:02:58.380364+00:00", "event_type": "ABSTENTION", "payload": {"reason": "AMBIGUOUS_TIME", "query": "If the desk wants a standing morning briefing, which three data points per aircraft line should it surface and why?", "message": "Relative time 'afternoon' is ambiguous across time zones. Please specify an exact UTC timestamp or flight number."}}
+{"timestamp": "2026-09-05T06:03:01.270027+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3231", "broken_pairing": "P-2224", "uncrewed_count": 4, "top_candidate": "C-3315"}}
+{"timestamp": "2026-09-05T06:03:03.937670+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-1042", "broken_pairing": "P-2291", "uncrewed_count": 6, "top_candidate": "C-3310"}}
+{"timestamp": "2026-09-05T06:03:08.176232+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-5417", "broken_pairing": "P-2210", "uncrewed_count": 4, "top_candidate": "C-2248"}}
+{"timestamp": "2026-09-05T06:03:11.269831+00:00", "event_type": "SIMULATION_COMPLETED", "payload": {"disrupted_crew": "C-3940", "broken_pairing": "P-2202", "uncrewed_count": 4, "top_candidate": "C-3305"}}
+{"timestamp": "2026-09-05T06:03:11.280716+00:00", "event_type": "ABSTENTION", "payload": {"reason": "UNKNOWN_ENTITY", "query": "Is Captain C-9999 available to fly DX412?", "message": "Crew member C-9999 does not exist in roster records."}}
+{"timestamp": "2026-09-05T06:03:11.288532+00:00", "event_type": "ABSTENTION", "payload": {"reason": "OUT_OF_SCOPE", "query": "Can we get hotel bookings and baggage vouchers for DX412 passengers?", "message": "Hotel accommodations and passenger baggage logistics are outside my operational scope. Please refer to Passenger Services."}}
+{"timestamp": "2026-09-05T06:03:11.297003+00:00", "event_type": "ABSTENTION", "payload": {"reason": "AMBIGUOUS_TIME", "query": "Who can fly sometime in the afternoon?", "message": "Relative time 'afternoon' is ambiguous across time zones. Please specify an exact UTC timestamp or flight number."}}
+{"timestamp": "2026-09-05T06:11:59.662375+00:00", "event_type": "LOOKUP_CREW_BY_BASE", "payload": {"base": "BLR", "rank": null, "count": 138}}
+{"timestamp": "2026-09-05T06:21:00.921975+00:00", "event_type": "LOOKUP_CREW_BY_BASE", "payload": {"base": "HYD", "rank": "Captain", "count": 0}}
+{"timestamp": "2026-09-05T06:22:05.278184+00:00", "event_type": "LOOKUP_CREW_BY_BASE", "payload": {"base": "HYD", "rank": "Captain", "count": 0}}
+{"timestamp": "2026-09-05T06:39:50.022715+00:00", "event_type": "LOOKUP_CREW_BY_BASE", "payload": {"base": "HYD", "rank": "Captain", "count": 0}}
+{"timestamp": "2026-09-05T06:40:13.204512+00:00", "event_type": "LOOKUP_CREW_BY_BASE", "payload": {"base": "BLR", "rank": "Captain", "count": 27}}
+{"timestamp": "2026-09-05T06:50:21.968417+00:00", "event_type": "LOOKUP_CREW_BY_BASE", "payload": {"base": "HYD", "rank": null, "count": 0}}
+{"timestamp": "2026-09-05T06:50:39.505256+00:00", "event_type": "LOOKUP_CREW_BY_BASE", "payload": {"base": "DEL", "rank": null, "count": 12}}
